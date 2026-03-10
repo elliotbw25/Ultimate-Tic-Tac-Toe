@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ultimate Tic Tac Toe</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  :root {
+    --paper:      #f5e8c8;
+    --paper-alt:  #edddb0;
+    --paper-dark: #e4d09a;
+    --panel:      #ede0b5;
+    --ink:        #1e0e02;
+    --ink-mid:    #4a2f10;
+    --ink-light:  #8a6a3a;
+    --ink-faint:  #c4a870;
+    --red-ink:    #7a1212;
+    --blue-ink:   #102050;
+    --red-tint:   rgba(122,18,18,0.10);
+    --blue-tint:  rgba(16,32,80,0.10);
+    --red-dim:    rgba(122,18,18,0.35);
+    --blue-dim:   rgba(16,32,80,0.35);
+    --border:     #b8922a;
+    --border-dim: #d4b870;
+    --shadow:     rgba(60,35,5,0.18);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  .hidden { display: none !important; }
+  .hidden { display: none !important; }
+
+  body {
+    /* Parchment base — layered gradients for aged paper feel */
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgba(210,170,80,0.25) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 85%, rgba(180,130,50,0.20) 0%, transparent 50%),
+      radial-gradient(ellipse at 60% 40%, rgba(240,200,120,0.15) 0%, transparent 60%);
+    color: var(--ink);
+    font-family: 'Lora', serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 24px 12px 40px;
+    overflow-x: hidden;
+  }
+
+  /* Subtle paper grain overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  .wrapper {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 16px; width: 100%; max-width: 680px;
+  }
+
+  /* ── TITLE ── */
+  header { text-align: center; padding-top: 4px; }
+  .title {
+    font-family: 'Cinzel', serif;
+    font-weight: 900;
+    font-size: clamp(24px, 5.5vw, 48px);
+    letter-spacing: 3px;
+    color: var(--ink);
+    text-shadow: 1px 2px 0 var(--border), 0 1px 3px var(--shadow);
+  }
+
+  /* ── CONTROLS PANEL ── */
+  .controls-panel {
+    background: var(--panel);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px var(--shadow), inset 0 1px 0 rgba(255,240,200,0.6);
+    width: 100%;
+    max-width: 580px;
+  }
+
+  .ctrl-group {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;
+  }
+  .ctrl-label {
+    font-family: 'Cinzel', serif;
+    font-size: 10px; letter-spacing: 1.5px;
+    color: var(--ink-light); text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .seg-row { display: flex; gap: 4px; }
+
+  .seg {
+    font-family: 'Lora', serif;
+    font-size: 11px;
+    padding: 5px 13px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border-dim);
+    background: var(--paper);
+    color: var(--ink-mid);
+    cursor: pointer;
+    transition: all 0.18s;
+    letter-spacing: 0.3px;
+  }
+  .seg:hover { background: var(--paper-dark); border-color: var(--border); color: var(--ink); }
+  .seg.active-sel {
+    background: var(--paper-dark);
+    border-color: var(--border);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: inset 0 1px 3px var(--shadow);
+  }
+
+  .ctrl-divider { width: 1px; height: 28px; background: var(--border-dim); }
+  .ai-only { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .ai-only.hidden { display: none; }
+  .hidden { display: none !important; }
+  .hidden { display: none !important; }
+  .hidden { display: none !important; }
+
+  /* ── HUD ── */
+  .hud {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; max-width: 580px; justify-content: center;
+  }
+
+  .player-card {
+    background: var(--panel);
+    border: 1.5px solid var(--border-dim);
+    border-radius: 8px;
+    padding: 10px 18px; text-align: center;
+    min-width: 92px;
+    transition: all 0.2s;
+    box-shadow: 0 1px 4px var(--shadow);
+  }
+  .player-card.active-x {
+    border-color: var(--red-ink);
+    background: rgba(122,18,18,0.06);
+    box-shadow: 0 2px 8px rgba(122,18,18,0.15);
+  }
+  .player-card.active-o {
+    border-color: var(--blue-ink);
+    background: rgba(16,32,80,0.06);
+    box-shadow: 0 2px 8px rgba(16,32,80,0.15);
+  }
+
+  .player-sym {
+    font-family: 'Cinzel', serif;
+    font-weight: 900; font-size: 28px; line-height: 1;
+  }
+  .x-sym { color: var(--red-ink); }
+  .o-sym { color: var(--blue-ink); }
+
+  .player-score {
+    font-family: 'Cinzel', serif;
+    font-size: 22px; margin-top: 2px; color: var(--ink-mid);
+  }
+  .player-card.active-x .player-score { color: var(--red-ink); }
+  .player-card.active-o .player-score { color: var(--blue-ink); }
+
+  .player-label {
+    font-size: 9px; letter-spacing: 2px;
+    color: var(--ink-light); margin-top: 2px;
+    font-family: 'Cinzel', serif; text-transform: uppercase;
+  }
+
+  .status-center { flex: 1; text-align: center; padding: 0 6px; }
+  .status-text {
+    font-family: 'Cinzel', serif;
+    font-size: 12px; letter-spacing: 1.5px;
+    color: var(--ink-light); line-height: 1.5;
+    transition: all 0.25s; text-transform: uppercase;
+  }
+  .status-text.sx { color: var(--red-ink); }
+  .status-text.so { color: var(--blue-ink); }
+  .status-text.win { font-size: 13px; animation: inkPulse 0.8s ease infinite alternate; }
+  @keyframes inkPulse { from{opacity:0.7;} to{opacity:1;} }
+
+  /* AI thinking dots */
+  .thinking-dots { display:inline-flex; gap:3px; vertical-align:middle; margin-left:5px; }
+  .thinking-dots span {
+    width:5px; height:5px; border-radius:50%;
+    background: var(--red-ink);
+    display:inline-block;
+    animation: tdot 1.2s ease infinite;
+  }
+  .thinking-dots span:nth-child(2){animation-delay:0.2s;}
+  .thinking-dots span:nth-child(3){animation-delay:0.4s;}
+  @keyframes tdot { 0%,80%,100%{transform:scale(0.4);opacity:0.25;} 40%{transform:scale(1);opacity:1;} }
+
+  .hint-bar {
+    font-family: 'Lora', serif; font-style: italic;
+    font-size: 11px; color: var(--ink-light);
+    text-align: center; height: 16px; transition: all 0.25s;
+  }
+  .hint-bar.sx { color: var(--red-dim); }
+  .hint-bar.so { color: var(--blue-dim); }
+
+  /* ── MEGA BOARD ── */
+  .mega-board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 14px;
+    background: var(--panel);
+    /* Parchment panel with aged edges */
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    box-shadow:
+      0 4px 16px var(--shadow),
+      inset 0 1px 0 rgba(255,245,210,0.7),
+      inset 0 -1px 0 rgba(160,110,20,0.2);
+    width: 100%; max-width: 580px;
+  }
+  .mega-board.ai-thinking { pointer-events: none; opacity: 0.82; }
+  .mega-board.game-over { animation: pageFlash 0.5s ease; }
+  @keyframes pageFlash {
+    0%{box-shadow:0 4px 16px var(--shadow);}
+    50%{box-shadow:0 0 40px rgba(122,18,18,0.25),0 4px 16px var(--shadow);}
+    100%{box-shadow:0 4px 16px var(--shadow);}
+  }
+  .mega-board.game-draw {
+    animation: drawFlash 0.5s ease;
+    position: relative;
+  }
+  .mega-board.game-draw::after {
+    content: 'DRAW';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Cinzel', serif; font-weight: 900;
+    font-size: clamp(40px, 10vw, 80px);
+    letter-spacing: 6px;
+    color: var(--ink-mid);
+    background: rgba(240,225,180,0.82);
+    border-radius: 5px;
+    z-index: 10;
+    animation: drawReveal 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes drawFlash {
+    0%{box-shadow:0 4px 16px var(--shadow);}
+    50%{box-shadow:0 0 40px rgba(80,60,10,0.3),0 4px 16px var(--shadow);}
+    100%{box-shadow:0 4px 16px var(--shadow);}
+  }
+  @keyframes drawReveal {
+    0%{opacity:0;transform:scale(0.85);}
+    100%{opacity:1;transform:scale(1);}
+  }
+
+  /* ── MINI BOARD ──
+     LAYOUT STABILITY: border, padding, gap are FROZEN — never change.
+     All highlighting uses outline only. Outline never shifts layout.
+     mega-board has overflow:hidden so outline can't bleed into gaps. */
+  .mini-board {
+    background: var(--paper-alt);  /* matches cell background — no visible gaps */
+    border: 2px solid var(--border-dim);
+    border-radius: 5px;
+    padding: 5px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    position: relative;
+    aspect-ratio: 1;
+    /* No transition — renderAll() rebuilds the DOM entirely on each move,
+       so CSS transitions on mini-board cause a flash at the base colour. */
+  }
+
+  .mini-board.force-x { background: rgba(122,18,18,0.12); border-color: rgba(122,18,18,0.45); }
+  .mini-board.force-o { background: rgba(16,32,80,0.10);  border-color: rgba(16,32,80,0.40); }
+  .mini-board.won-x   { background: var(--paper-alt); }
+  .mini-board.won-o   { background: var(--paper-alt); }
+  .mini-board.drawn   {
+    background:
+      repeating-linear-gradient( 45deg, rgba(100,80,30,0.08) 0px, rgba(100,80,30,0.08) 1px, transparent 1px, transparent 8px),
+      repeating-linear-gradient(-45deg, rgba(100,80,30,0.08) 0px, rgba(100,80,30,0.08) 1px, transparent 1px, transparent 8px),
+      var(--paper-alt);
+  }
+  .mini-board.meta-win-x { outline: 4px solid var(--red-ink);  outline-offset: -4px; }
+  .mini-board.meta-win-o { outline: 4px solid var(--blue-ink); outline-offset: -4px; }
+
+  /* Winner stamp overlay */
+  .mini-board.won-x::before,
+  .mini-board.won-o::before {
+    content: attr(data-winner);
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Cinzel', serif; font-weight: 900;
+    font-size: clamp(60px, 14vw, 110px);
+    z-index: 3; border-radius: 4px;
+    animation: stampIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .mini-board.won-x::before { color: var(--red-ink); background: rgba(122,18,18,0.07); }
+  .mini-board.won-o::before { color: var(--blue-ink); background: rgba(16,32,80,0.07); }
+  .mini-board.drawn::before {
+    content: 'DRAW'; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Cinzel', serif; font-size: clamp(22px, 5vw, 38px);
+    font-weight: 700; letter-spacing: 3px;
+    color: var(--ink-light); z-index: 3; border-radius: 4px;
+    background: rgba(240,225,180,0.55);
+  }
+  @keyframes stampIn { 0%{transform:scale(0.2) rotate(-6deg);opacity:0;} 100%{transform:scale(1) rotate(0);opacity:1;} }
+
+  /* ── CELLS ──
+     min-width:0 + overflow:hidden are critical — without them, text content
+     ("X" or "O") expands the cell's minimum size, which widens the grid column,
+     which makes the mini-board bigger, causing the visible column shift. */
+  .cell {
+    background: var(--paper-alt);
+    border: 1px solid var(--border-dim);
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: default;
+    font-family: 'Cinzel', serif; font-weight: 700;
+    font-size: clamp(10px, 2.2vw, 16px);
+    aspect-ratio: 1;
+    min-width: 0;      /* prevent text from expanding cell width */
+    min-height: 0;     /* prevent text from expanding cell height */
+    overflow: hidden;  /* contain any content that would otherwise push layout */
+    user-select: none;
+    color: transparent;
+    transition: background 0.12s, transform 0.12s;
+  }
+
+  .mini-board.force-x .cell:not(.taken),
+  .mini-board.force-o .cell:not(.taken) { cursor: pointer; }
+
+  .mini-board.force-x .cell:not(.taken):hover {
+    background: rgba(122,18,18,0.12);
+    transform: scale(1.06);
+  }
+  .mini-board.force-o .cell:not(.taken):hover {
+    background: rgba(16,32,80,0.10);
+    transform: scale(1.06);
+  }
+
+  .cell.x {
+    color: var(--red-ink);
+    background: var(--red-tint);
+    border-color: var(--red-dim);
+    animation: inkDrop 0.18s ease-out;
+  }
+  .cell.o {
+    color: var(--blue-ink);
+    background: var(--blue-tint);
+    border-color: var(--blue-dim);
+    animation: inkDrop 0.18s ease-out;
+  }
+  @keyframes inkDrop { 0%{transform:scale(0.5);opacity:0;} 100%{transform:scale(1);opacity:1;} }
+
+  /* Last move — slightly darkened background, no border change */
+  .cell.last-move {
+    outline: 2px solid var(--ink-mid);
+    outline-offset: -2px;
+    z-index: 1;
+  }
+  .cell.last-move.x { outline-color: var(--red-ink); }
+  .cell.last-move.o { outline-color: var(--blue-ink); }
+
+  /* Hover destination preview — pulsing tint on the target board */
+  .mini-board.hover-dest {
+    animation: destPulse 1s ease infinite alternate;
+  }
+  @keyframes destPulse {
+    from { background: var(--paper); }
+    to   { background: rgba(100,80,20,0.13); }
+  }
+  /* If force-x/o is also set, blend the pulse over the existing tint */
+  .mini-board.force-x.hover-dest { animation: destPulseRed 1s ease infinite alternate; }
+  .mini-board.force-o.hover-dest { animation: destPulseBlue 1s ease infinite alternate; }
+  @keyframes destPulseRed  { from{background:rgba(122,18,18,0.07);} to{background:rgba(122,18,18,0.18);} }
+  @keyframes destPulseBlue { from{background:rgba(16,32,80,0.07);}  to{background:rgba(16,32,80,0.18);}  }
+
+  /* Free-pass indicator — small dot in corner of cells that send opponent anywhere */
+  .cell.free-pass::after {
+    content: '';
+    position: absolute;
+    bottom: 3px; right: 3px;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--ink-faint);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .cell { position: relative; } /* needed for ::after positioning */
+
+  /* ── BUTTONS ── */
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+  .btn {
+    font-family: 'Cinzel', serif;
+    font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+    padding: 9px 22px; border-radius: 5px; cursor: pointer;
+    border: 1.5px solid var(--border);
+    background: var(--panel);
+    color: var(--ink-mid);
+    transition: all 0.18s;
+    box-shadow: 0 1px 4px var(--shadow);
+  }
+  .btn:hover { background: var(--paper-dark); color: var(--ink); transform: translateY(-1px); box-shadow: 0 3px 8px var(--shadow); }
+  .btn-new { border-color: var(--border); color: var(--ink); font-weight: 700; }
+
+  .rules-toggle {
+    font-family: 'Lora', serif; font-style: italic;
+    font-size: 12px; color: var(--ink-light);
+    cursor: pointer; background: none; border: none;
+    transition: color 0.18s; padding: 2px 0;
+  }
+  .rules-toggle:hover { color: var(--ink); }
+
+  .rules-box {
+    background: var(--panel);
+    border: 1.5px solid var(--border);
+    border-radius: 6px; padding: 16px 20px;
+    font-size: 12px; line-height: 1.85;
+    color: var(--ink-mid);
+    max-width: 520px; width: 100%; display: none;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  .rules-box.open { display: block; animation: fadeUp 0.2s ease; }
+  .rules-box b { color: var(--ink); }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(-5px);} to{opacity:1;transform:translateY(0);} }
+
+  .hint-toggle-row {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 16px;
+  }
+  .hint-toggle-info { display: flex; flex-direction: column; gap: 3px; }
+  .hint-toggle-name { font-weight: 600; color: var(--ink); font-size: 12px; }
+  .hint-toggle-desc { color: var(--ink-light); font-size: 11px; line-height: 1.5; max-width: 320px; }
+
+  /* ── LOBBY OVERLAY ── */
+  .lobby-overlay {
+    position: fixed; inset: 0;
+    background: rgba(235,215,160,0.90);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200;
+  }
+  .lobby-overlay.hidden { display: none; }
+  .hidden { display: none; }
+  .lobby-box > div.hidden { display: none; }
+  .lobby-overlay .hidden { display: none; }
+
+  .lobby-box {
+    background: var(--panel);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 36px 40px;
+    text-align: center;
+    box-shadow: 0 8px 40px var(--shadow);
+    max-width: 360px; width: 90%;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .lobby-heading {
+    font-family: 'Cinzel', serif; font-weight: 900;
+    font-size: 22px; letter-spacing: 2px; color: var(--ink);
+  }
+  .lobby-sub {
+    font-family: 'Lora', serif; font-size: 13px;
+    color: var(--ink-light); line-height: 1.6;
+  }
+  .lobby-sub b { color: var(--ink); }
+  .lobby-btn-group { display: flex; flex-direction: column; gap: 8px; }
+
+  .room-code {
+    font-family: 'Cinzel', serif; font-weight: 900;
+    font-size: 52px; letter-spacing: 12px; text-indent: 12px;
+    color: var(--ink); padding: 14px 8px;
+    background: var(--paper); border: 2px solid var(--border);
+    border-radius: 8px;
+  }
+  .code-input {
+    font-family: 'Cinzel', serif; font-weight: 700;
+    font-size: 36px; letter-spacing: 10px; text-indent: 10px;
+    text-align: center; text-transform: uppercase;
+    width: 100%; padding: 10px 8px;
+    background: var(--paper); border: 2px solid var(--border-dim);
+    border-radius: 6px; color: var(--ink); outline: none;
+  }
+  .code-input:focus { border-color: var(--border); }
+  .lobby-error { color: var(--red-ink); font-family: 'Lora', serif; font-size: 12px; font-style: italic; margin-top: 4px; }
+  .lobby-error.hidden { display: none; }
+
+  .lobby-first-row {
+    display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap; justify-content: center;
+    margin: 8px 0 4px;
+  }
+
+  /* When player is X (right side by default), flip HUD so they're always on the left */
+  .hud.my-sym-x { flex-direction: row-reverse; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div class="title">Ultimate Tic Tac Toe</div>
+  </header>
+
+  <!-- ── CONTROLS ── -->
+  <div class="controls-panel">
+    <!-- Mode -->
+    <div class="ctrl-group">
+      <span class="ctrl-label">Mode:</span>
+      <div class="seg-row">
+        <button class="seg active-sel" id="mode2p">2 Players</button>
+        <button class="seg" id="modeAI">vs CPU</button>
+        <button class="seg" id="modeOnline">Online</button>
+      </div>
+    </div>
+
+    <!-- AI-only options -->
+    <div class="ctrl-divider ai-only hidden" id="aiDivider1"></div>
+    <div class="ctrl-group ai-only hidden" id="diffGroup">
+      <span class="ctrl-label">Difficulty:</span>
+      <div class="seg-row">
+        <button class="seg active-sel" id="diffEasy">Easy</button>
+        <button class="seg" id="diffMed">Medium</button>
+        <button class="seg" id="diffHard">Hard</button>
+      </div>
+    </div>
+
+    <div class="ctrl-divider ai-only hidden" id="aiDivider2"></div>
+    <div class="ctrl-group ai-only hidden" id="firstGroup">
+      <span class="ctrl-label">Goes First:</span>
+      <div class="seg-row">
+        <button class="seg active-sel" id="firstPlayer">Player</button>
+        <button class="seg" id="firstAI">CPU</button>
+        <button class="seg" id="firstRandom">Random</button>
+        <button class="seg" id="firstAlternate">Alternate</button>
+      </div>
+    </div>
+
+    <!-- Online-only: goes first -->
+    <div class="ctrl-divider hidden" id="onlineDivider"></div>
+    <div class="ctrl-group hidden" id="onlineFirstGroup">
+      <span class="ctrl-label">Goes First:</span>
+      <div class="seg-row">
+        <button class="seg" id="onlineFirstYou" style="color:var(--blue-ink)">O</button>
+        <button class="seg" id="onlineFirstThem" style="color:var(--red-ink)">X</button>
+        <button class="seg active-sel" id="onlineFirstRandom">Random</button>
+        <button class="seg" id="onlineFirstAlt">Alternate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── HUD ── -->
+  <div class="hud" id="hud">
+    <div class="player-card active-o" id="cardO">
+      <div class="player-sym o-sym">O</div>
+      <div class="player-score" id="scoreO">0</div>
+      <div class="player-label" id="labelO">PLAYER 1</div>
+    </div>
+    <div class="status-center">
+      <div class="status-text sx" id="statusText">Player X's Turn</div>
+    </div>
+    <div class="player-card" id="cardX">
+      <div class="player-sym x-sym">X</div>
+      <div class="player-score" id="scoreX">0</div>
+      <div class="player-label" id="labelX">PLAYER 2</div>
+    </div>
+  </div>
+
+  <div class="hint-bar so" id="hintBar">Play in any board to begin</div>
+
+  <div class="mega-board" id="megaBoard"></div>
+
+  <div class="actions">
+    <button class="btn btn-new" id="btnNew">New Game</button>
+    <button class="btn" id="btnReset">Reset Scores</button>
+    <button class="rules-toggle" id="btnRules">How to play ↓</button>
+    <button class="rules-toggle" id="btnHints">Hints ↓</button>
+  </div>
+
+  <div class="rules-box" id="rulesBox">
+    <b>How to play Ultimate Tic Tac Toe</b><br><br>
+    • The board is a 3×3 grid of nine smaller Tic Tac Toe games.<br>
+    • Win a small game to claim that square on the big board.<br>
+    • Win the big board by claiming three squares in a row.<br>
+    • The cell you play in determines which small board your opponent must play in next.<br>
+    • If that board is already finished, your opponent may play in any open board.<br><br>
+    <b>CPU Difficulty:</b><br>
+    • <b>Easy</b> — mostly random moves<br>
+    • <b>Medium</b> — thinks 3 moves ahead<br>
+    • <b>Hard</b> — thinks 5 moves ahead with strategic evaluation
+  </div>
+
+  <div class="rules-box" id="hintsBox">
+    <b>Hints</b><br><br>
+    <div class="hint-toggle-row">
+      <div class="hint-toggle-info">
+        <span class="hint-toggle-name">Destination preview</span>
+        <span class="hint-toggle-desc">Hold your cursor over a cell for 1.5s to see which board it would send your opponent to.</span>
+      </div>
+      <div class="seg-row">
+        <button class="seg" id="hintDestOn">On</button>
+        <button class="seg active-sel" id="hintDestOff">Off</button>
+      </div>
+    </div>
+    <div class="hint-toggle-row" style="margin-top:12px">
+      <div class="hint-toggle-info">
+        <span class="hint-toggle-name">Free pass indicator</span>
+        <span class="hint-toggle-desc">Marks cells that would send your opponent to a finished board, giving them a free choice.</span>
+      </div>
+      <div class="seg-row">
+        <button class="seg active-sel" id="hintPassOn">On</button>
+        <button class="seg" id="hintPassOff">Off</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── ONLINE LOBBY OVERLAY ── -->
+<div id="lobbyOverlay" class="lobby-overlay hidden">
+  <div class="lobby-box">
+
+    <!-- Choice: just two buttons -->
+    <div id="lobbyChoice">
+      <div class="lobby-heading">Online Game</div>
+      <div class="lobby-btn-group" style="margin-top:18px">
+        <button class="btn btn-new" id="btnCreate">Create Game</button>
+        <button class="btn" id="btnJoinShow">Join Game</button>
+      </div>
+      <button class="rules-toggle" id="btnLobbyBack" style="margin-top:14px">← Back</button>
+    </div>
+
+    <!-- Waiting for opponent (host view) -->
+    <div id="lobbyWaiting" class="hidden">
+      <div class="lobby-heading">Waiting for opponent…</div>
+      <p class="lobby-sub" style="margin-top:6px">Share this code:</p>
+      <div class="room-code" id="lobbyCode">----</div>
+      <p class="lobby-sub">You will play as <b>O</b>.</p>
+      <button class="rules-toggle" id="btnCancelWait" style="margin-top:10px">← Cancel</button>
+    </div>
+
+    <!-- Enter code to join -->
+    <div id="lobbyJoin" class="hidden">
+      <div class="lobby-heading">Join Game</div>
+      <p class="lobby-sub" style="margin-top:6px">Enter your opponent's code:</p>
+      <input id="joinCodeInput" class="code-input" maxlength="4" placeholder="ABCD" autocomplete="off">
+      <div class="lobby-btn-group" style="margin-top:10px">
+        <button class="btn btn-new" id="btnJoinConfirm">Join</button>
+      </div>
+      <div class="lobby-error hidden" id="joinError"></div>
+      <button class="rules-toggle" id="btnJoinBack" style="margin-top:10px">← Back</button>
+    </div>
+
+  </div>
+</div>
+<script>
+// ════════════════════════════════════════════
+//  CONFIG
+// ════════════════════════════════════════════
+let vsAI         = false;
+let aiDifficulty = 'easy';
+let firstMover   = 'player';
+let aiThinking   = false;
+let hintDest     = false;
+let hintPass     = true;
+let onlineMode      = false;
+let mySymbol        = null;   // 'O' (host) or 'X' (guest)
+let roomCode        = null;
+let roomRef         = null;
+let onlineFirst     = 'random'; // 'you'|'them'|'random'|'alternate'
+let onlineGameCount = 0;        // for online alternating
+let aiGameCount     = 0;        // for AI alternating
+
+// ════════════════════════════════════════════
+//  GAME STATE
+// ════════════════════════════════════════════
+let scores       = {X:0, O:0};
+let currentPlayer;
+let miniStates;   // Array[9] of Array[9]
+let miniWinners;  // null | 'X' | 'O' | 'D'
+let forcedBoard;  // null | 0-8
+let gameOver;
+let lastMove;     // {bi, ci} | null
+
+const WIN_LINES     = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+const CELL_WEIGHTS  = [3,2,3, 2,4,2, 3,2,3];
+const BOARD_WEIGHTS = [3,2,3, 2,4,2, 3,2,3];
+
+// In AI mode: AI = X (red), Human = O (blue)
+const humanSym = () => vsAI ? 'O' : 'X';
+const aiSym    = () => 'X';
+
+function resolveFirstPlayer() {
+  if (onlineMode) {
+    // host is always O, guest is always X
+    // 'you' = host (O) first, 'them' = guest (X) first
+    if (onlineFirst === 'you')       return 'O';
+    if (onlineFirst === 'them')      return 'X';
+    if (onlineFirst === 'alternate') return (onlineGameCount % 2 === 0) ? 'O' : 'X';
+    return Math.random() < 0.5 ? 'O' : 'X'; // random
+  }
+  if (!vsAI) return 'X';
+  if (firstMover === 'player')    return 'O';
+  if (firstMover === 'ai')        return 'X';
+  if (firstMover === 'alternate') return (aiGameCount % 2 === 0) ? 'O' : 'X';
+  return Math.random() < 0.5 ? 'O' : 'X';
+}
+
+function checkWin(cells) {
+  for (const [a,b,c] of WIN_LINES)
+    if (cells[a] && cells[a]===cells[b] && cells[a]===cells[c])
+      return {winner:cells[a], line:[a,b,c]};
+  if (cells.every(Boolean)) return {draw:true};
+  return null;
+}
+
+// Returns true if it is mathematically impossible for either player to win
+// the meta board — i.e. every winning line is blocked for both players.
+// A line is blocked for X if it contains an O or a drawn (D) square.
+// A line is blocked for O if it contains an X or a drawn (D) square.
+function isMetaDraw(mw) {
+  const xCanWin = WIN_LINES.some(([a,b,c]) =>
+    [mw[a],mw[b],mw[c]].every(v => v !== 'O' && v !== 'D')
+  );
+  const oCanWin = WIN_LINES.some(([a,b,c]) =>
+    [mw[a],mw[b],mw[c]].every(v => v !== 'X' && v !== 'D')
+  );
+  return !xCanWin && !oCanWin;
+}
+
+// ════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════
+function initGame() {
+  if (onlineMode) onlineGameCount++;
+  if (vsAI) aiGameCount++;
+  currentPlayer = resolveFirstPlayer();
+  miniStates    = Array.from({length:9}, ()=>Array(9).fill(null));
+  miniWinners   = Array(9).fill(null);
+  forcedBoard   = null;
+  gameOver      = false;
+  aiThinking    = false;
+  lastMove      = null;
+  renderAll();
+  updateHUD();
+  updateLabels();
+  // If AI goes first, kick it off
+  if (vsAI && currentPlayer === aiSym()) triggerAI();
+  // In online mode, host writes the fresh state so both players sync
+  if (onlineMode && mySymbol === 'O') syncToFirebase('reset');
+}
+
+// ════════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════════
+function renderAll() {
+  const mb = document.getElementById('megaBoard');
+  mb.innerHTML = '';
+  mb.className = 'mega-board' + (aiThinking ? ' ai-thinking' : '');
+  for (let bi=0; bi<9; bi++) mb.appendChild(buildMiniBoard(bi));
+}
+
+function buildMiniBoard(bi) {
+  const div = document.createElement('div');
+  div.className = 'mini-board';
+  div.dataset.bi = bi;
+
+  const winner = miniWinners[bi];
+  if      (winner==='X') { div.classList.add('won-x'); div.dataset.winner='X'; }
+  else if (winner==='O') { div.classList.add('won-o'); div.dataset.winner='O'; }
+  else if (winner==='D') { div.classList.add('drawn'); }
+  else {
+    const isMyTurn  = onlineMode
+      ? (currentPlayer === mySymbol)
+      : (!vsAI || currentPlayer === humanSym());
+    const canPlay   = !gameOver && !aiThinking && isMyTurn && (forcedBoard===null || forcedBoard===bi);
+    if (canPlay) div.classList.add(currentPlayer==='X' ? 'force-x' : 'force-o');
+  }
+
+  for (let ci=0; ci<9; ci++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.bi = bi;
+    cell.dataset.ci = ci;
+    const val = miniStates[bi][ci];
+    if (val) {
+      cell.classList.add('taken', val.toLowerCase());
+      cell.textContent = val;
+    }
+    if (lastMove && lastMove.bi===bi && lastMove.ci===ci) cell.classList.add('last-move');
+
+    // Free-pass indicator: empty cell whose index maps to a finished board
+    const isPlayableBoard = !gameOver && !winner && (forcedBoard===null || forcedBoard===bi);
+    if (hintPass && isPlayableBoard && !val && miniWinners[ci] !== null) {
+      cell.classList.add('free-pass');
+    }
+
+    if (!gameOver && !winner && !aiThinking) {
+      cell.addEventListener('click', handleClick);
+
+      // Hover destination preview — show after 1.5s hold
+      let hoverTimer = null;
+      cell.addEventListener('mouseenter', () => {
+        if (!hintDest || gameOver || aiThinking || val) return;
+        if (vsAI && currentPlayer === aiSym()) return;
+        hoverTimer = setTimeout(() => {
+          const destBi = ci;
+          if (destBi !== bi && miniWinners[destBi] === null) {
+            const destBoard = document.querySelector(`.mini-board[data-bi="${destBi}"]`);
+            if (destBoard) destBoard.classList.add('hover-dest');
+          }
+        }, 1500);
+      });
+      cell.addEventListener('mouseleave', () => {
+        clearTimeout(hoverTimer);
+        document.querySelectorAll('.mini-board.hover-dest').forEach(b => b.classList.remove('hover-dest'));
+      });
+    }
+
+    div.appendChild(cell);
+  }
+  return div;
+}
+
+// ════════════════════════════════════════════
+//  HUMAN CLICK
+// ════════════════════════════════════════════
+function handleClick(e) {
+  if (gameOver || aiThinking) return;
+  if (vsAI && currentPlayer === aiSym()) return;
+  if (onlineMode && currentPlayer !== mySymbol) return;
+  applyMove(+e.target.dataset.bi, +e.target.dataset.ci);
+}
+
+// ════════════════════════════════════════════
+//  APPLY MOVE  (human + AI share this)
+// ════════════════════════════════════════════
+function applyMove(bi, ci) {
+  if (miniWinners[bi] !== null)              return;
+  if (forcedBoard !== null && forcedBoard !== bi) return;
+  if (miniStates[bi][ci])                    return;
+
+  miniStates[bi][ci] = currentPlayer;
+  lastMove = {bi, ci};
+
+  const miniResult = checkWin(miniStates[bi]);
+  if (miniResult) miniWinners[bi] = miniResult.draw ? 'D' : miniResult.winner;
+
+  let nextForced = ci;
+  if (miniWinners[nextForced] !== null) nextForced = null;
+
+  const metaCells  = miniWinners.map(w=>(w==='X'||w==='O')?w:null);
+  const metaResult = checkWin(metaCells);
+
+  if (metaResult && !metaResult.draw) {
+    gameOver = true;
+    const w = metaResult.winner;
+    scores[w]++;
+    document.getElementById('scoreX').textContent = scores.X;
+    document.getElementById('scoreO').textContent = scores.O;
+    aiThinking = false;
+    renderAll();
+    highlightMetaWin(metaResult.line, w);
+    document.getElementById('megaBoard').classList.add('game-over');
+    const label = onlineMode
+      ? (w === mySymbol ? 'Victory! Well played.' : 'Opponent wins.')
+      : vsAI
+        ? (w===humanSym() ? 'Victory! Well played.' : 'The CPU wins.')
+        : `Player ${w} wins the game!`;
+    setStatus(label, w==='X'?'sx win':'so win');
+    setHint('', '');
+    updateCards(null);
+    if (onlineMode) syncToFirebase();
+    return;
+  }
+
+  if (miniWinners.every(w=>w!==null) || isMetaDraw(miniWinners)) {
+    gameOver = true; aiThinking = false;
+    renderAll();
+    document.getElementById('megaBoard').classList.add('game-draw');
+    setStatus('The game is a draw.', 'win');
+    setHint('', '');
+    updateCards(null);
+    if (onlineMode) syncToFirebase();
+    return;
+  }
+
+  forcedBoard   = nextForced;
+  currentPlayer = currentPlayer==='X'?'O':'X';
+  renderAll();
+  updateHUD();
+  if (onlineMode) syncToFirebase();
+  if (vsAI && currentPlayer===aiSym() && !gameOver) triggerAI();
+}
+
+// ════════════════════════════════════════════
+//  AI ENGINE  — AI = X (maximiser)
+// ════════════════════════════════════════════
+function triggerAI() {
+  aiThinking = true;
+  document.getElementById('statusText').innerHTML =
+    'Pondering… <span class="thinking-dots"><span></span><span></span><span></span></span>';
+  document.getElementById('statusText').className = 'status-text sx';
+  document.getElementById('megaBoard').classList.add('ai-thinking');
+  setHint('', '');
+  updateCards('X');
+
+  const delay = {easy:450, medium:650, hard:900}[aiDifficulty];
+  setTimeout(()=>{
+    const move = getBestMove();
+    aiThinking = false;
+    applyMove(move.bi, move.ci);
+  }, delay);
+}
+
+function getValidMoves(ms, mw, forced) {
+  const moves = [];
+  if (forced!==null && mw[forced]===null) {
+    for (let ci=0; ci<9; ci++) if (!ms[forced][ci]) moves.push({bi:forced,ci});
+  } else {
+    for (let bi=0; bi<9; bi++) {
+      if (mw[bi]!==null) continue;
+      for (let ci=0; ci<9; ci++) if (!ms[bi][ci]) moves.push({bi,ci});
+    }
+  }
+  return moves;
+}
+
+function cloneState(ms, mw) { return {ms:ms.map(b=>[...b]),mw:[...mw]}; }
+
+function simMove(ms, mw, bi, ci, player) {
+  ms[bi][ci] = player;
+  const r = checkWin(ms[bi]);
+  if (r) mw[bi] = r.draw?'D':r.winner;
+  let nf = ci;
+  if (mw[nf]!==null) nf = null;
+  return nf;
+}
+
+function evaluate(ms, mw) {
+  const meta = mw.map(w=>(w==='X'||w==='O')?w:null);
+  const mr   = checkWin(meta);
+  if (mr && !mr.draw) return mr.winner==='X' ? 100000 : -100000;
+  if (mw.every(w=>w!==null) || isMetaDraw(mw)) return 0;
+  let score = 0;
+  for (const [a,b,c] of WIN_LINES) {
+    const line=[meta[a],meta[b],meta[c]];
+    const xs=line.filter(v=>v==='X').length, os=line.filter(v=>v==='O').length, ns=line.filter(v=>v===null).length;
+    if(xs>0&&os===0) score+=xs===2?(ns===1?600:200):60;
+    if(os>0&&xs===0) score-=os===2?(ns===1?600:200):60;
+  }
+  for (let bi=0; bi<9; bi++) {
+    const bw=BOARD_WEIGHTS[bi];
+    if(mw[bi]==='X'){score+=250*bw;continue;}
+    if(mw[bi]==='O'){score-=250*bw;continue;}
+    if(mw[bi]==='D') continue;
+    for(const [a,b,c] of WIN_LINES){
+      const line=[ms[bi][a],ms[bi][b],ms[bi][c]];
+      const xs=line.filter(v=>v==='X').length,os=line.filter(v=>v==='O').length;
+      if(xs>0&&os===0) score+=(xs===2?25:6)*bw;
+      if(os>0&&xs===0) score-=(os===2?25:6)*bw;
+    }
+    for(let ci=0;ci<9;ci++){
+      if(ms[bi][ci]==='X') score+=CELL_WEIGHTS[ci]*bw*0.4;
+      if(ms[bi][ci]==='O') score-=CELL_WEIGHTS[ci]*bw*0.4;
+    }
+  }
+  return score;
+}
+
+const DEPTH_MAP = {easy:1, medium:3, hard:5};
+
+function minimax(ms, mw, forced, depth, alpha, beta, isMax) {
+  const meta=mw.map(w=>(w==='X'||w==='O')?w:null);
+  const mr=checkWin(meta);
+  if(mr&&!mr.draw) return mr.winner==='X'?100000+depth:-100000-depth;
+  if(mw.every(w=>w!==null) || isMetaDraw(mw)) return 0;
+  if(depth===0) return evaluate(ms,mw);
+  const moves=getValidMoves(ms,mw,forced);
+  if(!moves.length) return evaluate(ms,mw);
+  moves.sort((a,b)=>CELL_WEIGHTS[b.ci]-CELL_WEIGHTS[a.ci]);
+  if(isMax){
+    let best=-Infinity;
+    for(const m of moves){
+      const {ms:nms,mw:nmw}=cloneState(ms,mw);
+      const val=minimax(nms,nmw,simMove(nms,nmw,m.bi,m.ci,'X'),depth-1,alpha,beta,false);
+      if(val>best)best=val; if(best>alpha)alpha=best; if(beta<=alpha)break;
+    }
+    return best;
+  } else {
+    let best=Infinity;
+    for(const m of moves){
+      const {ms:nms,mw:nmw}=cloneState(ms,mw);
+      const val=minimax(nms,nmw,simMove(nms,nmw,m.bi,m.ci,'O'),depth-1,alpha,beta,true);
+      if(val<best)best=val; if(best<beta)beta=best; if(beta<=alpha)break;
+    }
+    return best;
+  }
+}
+
+function getBestMove() {
+  const moves = getValidMoves(miniStates,miniWinners,forcedBoard);
+  if(aiDifficulty==='easy' && Math.random()<0.75) return moves[Math.floor(Math.random()*moves.length)];
+  const depth=DEPTH_MAP[aiDifficulty];
+  let bestVal=-Infinity, bestMove=moves[0];
+  moves.sort(()=>Math.random()-0.5);
+  for(const m of moves){
+    const {ms:nms,mw:nmw}=cloneState(miniStates,miniWinners);
+    const val=minimax(nms,nmw,simMove(nms,nmw,m.bi,m.ci,'X'),depth-1,-Infinity,Infinity,false);
+    if(val>bestVal){bestVal=val;bestMove=m;}
+  }
+  return bestMove;
+}
+
+// ════════════════════════════════════════════
+//  HUD
+// ════════════════════════════════════════════
+const BOARD_NAMES = ['top-left','top-centre','top-right','mid-left','centre','mid-right','bot-left','bot-centre','bot-right'];
+
+function updateHUD() {
+  if (onlineMode) {
+    const isMyTurn = currentPlayer === mySymbol;
+    const cls = currentPlayer==='X'?'sx':'so';
+    setStatus(isMyTurn ? 'Your turn' : "Opponent's turn", cls);
+    updateCards(currentPlayer);
+    setHint(
+      isMyTurn
+        ? (forcedBoard!==null ? `Must play in the ${BOARD_NAMES[forcedBoard]} board` : 'Free choice — any active board')
+        : 'Waiting for opponent…',
+      cls
+    );
+    return;
+  }
+  if (vsAI) {
+    if (currentPlayer===humanSym()) {
+      setStatus("Your turn", 'so');
+      updateCards('O');
+      setHint(forcedBoard!==null ? `Must play in the ${BOARD_NAMES[forcedBoard]} board` : 'Free choice — any active board', 'so');
+    } else {
+      updateCards('X');
+      setHint('', '');
+    }
+  } else {
+    const cls = currentPlayer==='X'?'sx':'so';
+    setStatus(`Player ${currentPlayer}'s turn`, cls);
+    updateCards(currentPlayer);
+    setHint(forcedBoard!==null ? `Must play in the ${BOARD_NAMES[forcedBoard]} board` : 'Free choice — any active board', cls);
+  }
+}
+
+function setStatus(txt, cls) {
+  const el=document.getElementById('statusText');
+  el.textContent=txt; el.className='status-text '+cls;
+}
+function setHint(txt, cls) {
+  const el=document.getElementById('hintBar');
+  el.textContent=txt; el.className='hint-bar '+cls;
+}
+function updateCards(active) {
+  document.getElementById('cardX').className='player-card'+(active==='X'?' active-x':'');
+  document.getElementById('cardO').className='player-card'+(active==='O'?' active-o':'');
+}
+function updateLabels() {
+  const hud = document.getElementById('hud');
+  if (onlineMode) {
+    document.getElementById('labelO').textContent = mySymbol==='O' ? 'YOU' : 'OPPONENT';
+    document.getElementById('labelX').textContent = mySymbol==='X' ? 'YOU' : 'OPPONENT';
+    // Always put the player on the left
+    if (hud) hud.classList.toggle('my-sym-x', mySymbol === 'X');
+  } else {
+    if (hud) hud.classList.remove('my-sym-x');
+    if (vsAI) {
+      document.getElementById('labelO').textContent = 'YOU';
+      document.getElementById('labelX').textContent = 'CPU';
+    } else {
+      document.getElementById('labelO').textContent = 'PLAYER 1';
+      document.getElementById('labelX').textContent = 'PLAYER 2';
+    }
+  }
+}
+function highlightMetaWin(line, winner) {
+  const cls = winner==='X'?'meta-win-x':'meta-win-o';
+  document.querySelectorAll('.mini-board').forEach((b,i)=>{ if(line.includes(i)) b.classList.add(cls); });
+}
+
+// ════════════════════════════════════════════
+//  TOGGLE AI-ONLY CONTROLS
+// ════════════════════════════════════════════
+function setAIControlsVisible(visible) {
+  ['aiDivider1','aiDivider2','diffGroup','firstGroup'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(visible) el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  });
+}
+function setOnlineControlsVisible(visible) {
+  ['onlineDivider','onlineFirstGroup'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(visible) el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  });
+  // Hide New Game / Reset Scores for guest; host keeps them
+  const isGuest = visible && mySymbol === 'X';
+  document.getElementById('btnNew').classList.toggle('hidden', isGuest);
+  document.getElementById('btnReset').classList.toggle('hidden', isGuest);
+  if (visible) {
+    syncOnlineFirstUI();
+    // Guest: dim goes-first buttons so they're read-only
+    document.querySelectorAll('#onlineFirstGroup .seg').forEach(s=>{
+      s.disabled = isGuest;
+      s.style.opacity = isGuest ? '0.45' : '';
+      s.style.cursor  = isGuest ? 'default' : '';
+    });
+  } else {
+    // Restore buttons when leaving online mode
+    document.getElementById('btnNew').classList.remove('hidden');
+    document.getElementById('btnReset').classList.remove('hidden');
+  }
+}
+
+// ════════════════════════════════════════════
+//  CONTROLS
+// ════════════════════════════════════════════
+document.getElementById('btnNew').addEventListener('click', ()=>{
+  if (onlineMode) { initGame(); return; }
+  initGame();
+});
+document.getElementById('btnReset').addEventListener('click', ()=>{
+  if (onlineMode) {
+    scores={X:0,O:0};
+    document.getElementById('scoreX').textContent=0;
+    document.getElementById('scoreO').textContent=0;
+    initGame();
+    return;
+  }
+  scores={X:0,O:0};
+  document.getElementById('scoreX').textContent=0;
+  document.getElementById('scoreO').textContent=0;
+  initGame();
+});
+document.getElementById('btnRules').addEventListener('click', ()=>{
+  const box=document.getElementById('rulesBox');
+  box.classList.toggle('open');
+  document.getElementById('hintsBox').classList.remove('open');
+  document.getElementById('btnHints').textContent = 'Hints ↓';
+  document.getElementById('btnRules').textContent=box.classList.contains('open')?'How to play ↑':'How to play ↓';
+});
+
+// Mode
+document.getElementById('mode2p').addEventListener('click', ()=>{
+  if (onlineMode) leaveOnlineMode();
+  vsAI=false;
+  document.getElementById('mode2p').classList.add('active-sel');
+  document.getElementById('modeAI').classList.remove('active-sel');
+  document.getElementById('modeOnline').classList.remove('active-sel');
+  setAIControlsVisible(false);
+  initGame();
+});
+document.getElementById('modeAI').addEventListener('click', ()=>{
+  if (onlineMode) leaveOnlineMode();
+  vsAI=true;
+  document.getElementById('modeAI').classList.add('active-sel');
+  document.getElementById('mode2p').classList.remove('active-sel');
+  document.getElementById('modeOnline').classList.remove('active-sel');
+  setAIControlsVisible(true);
+  initGame();
+});
+
+// Difficulty
+[['Easy','easy'],['Med','medium'],['Hard','hard']].forEach(([id,key])=>{
+  document.getElementById('diff'+id).addEventListener('click', ()=>{
+    aiDifficulty=key;
+    document.querySelectorAll('#diffGroup .seg').forEach(s=>s.classList.remove('active-sel'));
+    document.getElementById('diff'+id).classList.add('active-sel');
+    initGame();
+  });
+});
+
+// First mover
+[['Player','player'],['AI','ai'],['Random','random'],['Alternate','alternate']].forEach(([id,key])=>{
+  document.getElementById('first'+id).addEventListener('click', ()=>{
+    firstMover=key;
+    document.querySelectorAll('#firstGroup .seg').forEach(s=>s.classList.remove('active-sel'));
+    document.getElementById('first'+id).classList.add('active-sel');
+    initGame();
+  });
+});
+
+// Hints dropdown
+document.getElementById('btnHints').addEventListener('click', ()=>{
+  const box = document.getElementById('hintsBox');
+  box.classList.toggle('open');
+  // close rules if open
+  document.getElementById('rulesBox').classList.remove('open');
+  document.getElementById('btnRules').textContent = 'How to play ↓';
+  document.getElementById('btnHints').textContent = box.classList.contains('open') ? 'Hints ↑' : 'Hints ↓';
+});
+
+// Individual hint toggles
+document.getElementById('hintDestOn').addEventListener('click', ()=>{
+  hintDest = true;
+  document.getElementById('hintDestOn').classList.add('active-sel');
+  document.getElementById('hintDestOff').classList.remove('active-sel');
+});
+document.getElementById('hintDestOff').addEventListener('click', ()=>{
+  hintDest = false;
+  document.getElementById('hintDestOff').classList.add('active-sel');
+  document.getElementById('hintDestOn').classList.remove('active-sel');
+  document.querySelectorAll('.mini-board.hover-dest').forEach(b=>b.classList.remove('hover-dest'));
+});
+document.getElementById('hintPassOn').addEventListener('click', ()=>{
+  hintPass = true;
+  document.getElementById('hintPassOn').classList.add('active-sel');
+  document.getElementById('hintPassOff').classList.remove('active-sel');
+  renderAll();
+});
+document.getElementById('hintPassOff').addEventListener('click', ()=>{
+  hintPass = false;
+  document.getElementById('hintPassOff').classList.add('active-sel');
+  document.getElementById('hintPassOn').classList.remove('active-sel');
+  renderAll();
+});
+
+// ════════════════════════════════════════════
+//  FIREBASE + ONLINE MULTIPLAYER
+// ════════════════════════════════════════════
+firebase.initializeApp({
+  apiKey:            "AIzaSyBamXu8rcXcxJzWjwYJ3KcAuc48iKppLrE",
+  authDomain:        "ultimate-tic-tac-toe-d513d.firebaseapp.com",
+  databaseURL:       "https://ultimate-tic-tac-toe-d513d-default-rtdb.firebaseio.com",
+  projectId:         "ultimate-tic-tac-toe-d513d",
+  storageBucket:     "ultimate-tic-tac-toe-d513d.firebasestorage.app",
+  messagingSenderId: "265163098071",
+  appId:             "1:265163098071:web:893ca901776648477aad92"
+});
+const db = firebase.database();
+
+// ── State serialization ───────────────────────
+function serializeState() {
+  return JSON.stringify({
+    ms: miniStates, mw: miniWinners, cp: currentPlayer,
+    fb: forcedBoard, lm: lastMove,   go: gameOver, sc: scores
+  });
+}
+function deserializeState(str) {
+  const s = JSON.parse(str);
+  miniStates = s.ms; miniWinners = s.mw; currentPlayer = s.cp;
+  forcedBoard = s.fb; lastMove = s.lm; gameOver = s.go; scores = s.sc;
+  document.getElementById('scoreX').textContent = scores.X;
+  document.getElementById('scoreO').textContent = scores.O;
+}
+function syncToFirebase(tag) {
+  if (!roomRef) return;
+  roomRef.update({
+    state: serializeState(),
+    lastMoveBy: tag || mySymbol,
+    onlineFirst,
+    gameCount: onlineGameCount
+  });
+}
+
+// ── Room code ─────────────────────────────────
+function genCode() {
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  return Array.from({length:4}, ()=>c[Math.floor(Math.random()*c.length)]).join('');
+}
+
+// ── Lobby helpers ─────────────────────────────
+function showLobbyView(id) {
+  ['lobbyChoice','lobbyWaiting','lobbyJoin'].forEach(v =>
+    document.getElementById(v).classList.toggle('hidden', v !== id)
+  );
+  document.getElementById('joinError').classList.add('hidden');
+}
+function showLobby() {
+  document.getElementById('lobbyOverlay').classList.remove('hidden');
+  showLobbyView('lobbyChoice');
+}
+function hideLobby() {
+  document.getElementById('lobbyOverlay').classList.add('hidden');
+}
+function showJoinError(msg) {
+  const el = document.getElementById('joinError');
+  el.textContent = msg; el.classList.remove('hidden');
+}
+
+// ── Create room ───────────────────────────────
+async function createRoom() {
+  const code = genCode();
+  roomCode = code; mySymbol = 'O';
+  roomRef  = db.ref('rooms/' + code);
+  onlineGameCount = 0;
+
+  // Initialise board
+  miniStates = Array.from({length:9},()=>Array(9).fill(null));
+  miniWinners = Array(9).fill(null);
+  currentPlayer = resolveFirstPlayer();
+  forcedBoard = null; gameOver = false; lastMove = null;
+
+  await roomRef.set({
+    hostPresent: true, guestPresent: false,
+    lastMoveBy: null, onlineFirst,
+    state: serializeState()
+  });
+  roomRef.child('hostPresent').onDisconnect().set(false);
+
+  document.getElementById('lobbyCode').textContent = code;
+  showLobbyView('lobbyWaiting');
+
+  // Wait for guest to join
+  roomRef.child('guestPresent').on('value', snap => {
+    if (snap.val() === true) startOnlineGame();
+  });
+}
+
+function updateWaitingText() {
+  const goFirst = onlineFirst === 'you' ? 'You go first.'
+    : onlineFirst === 'them'    ? 'Opponent goes first.'
+    : onlineFirst === 'random'  ? 'First move chosen at random.'
+    : 'Alternates each game.';
+  document.getElementById('lobbyYouAre').innerHTML = `You will play as <b>O</b>. ${goFirst}`;
+}
+
+// ── Join room ─────────────────────────────────
+async function joinRoom() {
+  const code = document.getElementById('joinCodeInput').value.toUpperCase().trim();
+  if (code.length !== 4) { showJoinError('Please enter a 4-letter code.'); return; }
+
+  const snap = await db.ref('rooms/'+code).once('value');
+  const data  = snap.val();
+
+  if (!data)             { showJoinError('Room not found.'); return; }
+  if (!data.hostPresent) { showJoinError('Host has disconnected.'); return; }
+  if (data.guestPresent) { showJoinError('Room is already full.'); return; }
+
+  roomCode = code; mySymbol = 'X';
+  roomRef  = db.ref('rooms/'+code);
+  onlineFirst     = data.onlineFirst || 'random';
+  onlineGameCount = data.gameCount   || 0;
+
+  await roomRef.child('guestPresent').set(true);
+  roomRef.child('guestPresent').onDisconnect().set(false);
+
+  deserializeState(data.state);
+  startOnlineGame();
+}
+
+// ── Start online game ─────────────────────────
+function startOnlineGame() {
+  onlineMode = true;
+  vsAI = false;
+  hideLobby();
+
+  ['mode2p','modeAI'].forEach(id => document.getElementById(id).classList.remove('active-sel'));
+  document.getElementById('modeOnline').classList.add('active-sel');
+  setAIControlsVisible(false);
+  setOnlineControlsVisible(true);
+
+  renderAll(); updateHUD(); updateLabels();
+
+  // Listen for all room changes
+  roomRef.on('value', snap => {
+    if (!snap.exists()) return;
+    const data = snap.val();
+    if (!data) return;
+
+    // Opponent disconnected
+    const opKey = mySymbol === 'O' ? 'guestPresent' : 'hostPresent';
+    if (data[opKey] === false) {
+      setStatus('Opponent disconnected.', 'win');
+      gameOver = true; renderAll(); updateCards(null); return;
+    }
+
+    // Always pick up settings changes regardless of whose move it was
+    if (data.onlineFirst && data.onlineFirst !== onlineFirst) {
+      onlineFirst = data.onlineFirst; syncOnlineFirstUI();
+    }
+    if (data.gameCount !== undefined) onlineGameCount = data.gameCount;
+
+    // Apply opponent's move, or respond to a host-initiated reset
+    if (data.state && data.lastMoveBy !== mySymbol) {
+      // If it's a reset signal pushed by the host, both sides need fresh state
+      if (data.lastMoveBy === 'reset') {
+        deserializeState(data.state);
+        renderAll(); updateHUD(); updateLabels();
+        return;
+      }
+      deserializeState(data.state);
+      renderAll(); updateHUD();
+      if (gameOver) {
+        const mc = miniWinners.map(w=>(w==='X'||w==='O')?w:null);
+        const mr = checkWin(mc);
+        if (mr && !mr.draw) { highlightMetaWin(mr.line, mr.winner); document.getElementById('megaBoard').classList.add('game-over'); }
+        else document.getElementById('megaBoard').classList.add('game-draw');
+        updateCards(null);
+      }
+    }
+  });
+}
+
+// ── Leave online mode ─────────────────────────
+function leaveOnlineMode() {
+  if (roomRef) {
+    const presKey = mySymbol === 'O' ? 'hostPresent' : 'guestPresent';
+    roomRef.child(presKey).set(false);
+    roomRef.child(presKey).onDisconnect().cancel();
+    roomRef.off();
+  }
+  onlineMode = false; mySymbol = null; roomCode = null; roomRef = null;
+  setOnlineControlsVisible(false);
+}
+
+// ── Lobby button wiring ───────────────────────
+document.getElementById('modeOnline').addEventListener('click', showLobby);
+
+document.getElementById('btnCreate').addEventListener('click', createRoom);
+
+document.getElementById('btnJoinShow').addEventListener('click', ()=>{
+  showLobbyView('lobbyJoin');
+  const inp = document.getElementById('joinCodeInput');
+  inp.value = ''; inp.focus();
+});
+
+document.getElementById('btnJoinConfirm').addEventListener('click', joinRoom);
+
+document.getElementById('joinCodeInput').addEventListener('input', e=>{
+  e.target.value = e.target.value.toUpperCase();
+});
+document.getElementById('joinCodeInput').addEventListener('keydown', e=>{
+  if (e.key==='Enter') joinRoom();
+});
+
+document.getElementById('btnCancelWait').addEventListener('click', ()=>{
+  if (roomRef) { roomRef.remove(); roomRef.off(); }
+  roomRef = null; roomCode = null; mySymbol = null;
+  showLobbyView('lobbyChoice');
+});
+
+// Online goes-first selector (in controls panel)
+function syncOnlineFirstUI() {
+  const map = {you:'onlineFirstYou', them:'onlineFirstThem', random:'onlineFirstRandom', alternate:'onlineFirstAlt'};
+  document.querySelectorAll('#onlineFirstGroup .seg').forEach(s=>s.classList.remove('active-sel'));
+  const btn = document.getElementById(map[onlineFirst]);
+  if (btn) btn.classList.add('active-sel');
+}
+
+function gameHasStarted() {
+  // True if at least one move has been made
+  return lastMove !== null;
+}
+
+function applyOnlineFirstChange(key) {
+  onlineFirst = key;
+  syncOnlineFirstUI();
+  roomRef.update({ onlineFirst });
+  // Reset immediately, no confirm needed
+  onlineGameCount++;
+  initGame(); // initGame calls syncToFirebase('reset') for host
+}
+
+[['You','you'],['Them','them'],['Random','random'],['Alt','alternate']].forEach(([id,key])=>{
+  document.getElementById('onlineFirst'+id).addEventListener('click', ()=>{
+    if (!onlineMode || mySymbol !== 'O') return; // host only
+    if (key === onlineFirst) return; // no change
+    if (gameHasStarted() && !gameOver) {
+      if (!confirm('Start a new game with this setting?')) {
+        syncOnlineFirstUI(); // revert visual
+        return;
+      }
+    }
+    applyOnlineFirstChange(key);
+  });
+});
+
+document.getElementById('btnJoinBack').addEventListener('click', ()=>showLobbyView('lobbyChoice'));
+
+document.getElementById('btnLobbyBack').addEventListener('click', ()=>{
+  if (roomRef) { roomRef.off(); roomRef = null; }
+  roomCode = null; mySymbol = null;
+  document.getElementById('modeOnline').classList.remove('active-sel');
+  hideLobby();
+});
+
+// ════════════════════════════════════════════
+//  GO
+// ════════════════════════════════════════════
+initGame();
+</script>
+</body>
+</html>
