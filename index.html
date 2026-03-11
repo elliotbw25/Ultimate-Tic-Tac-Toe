@@ -130,8 +130,53 @@
   .ai-only { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
   .ai-only.hidden { display: none; }
   .hidden { display: none !important; }
-  .hidden { display: none !important; }
-  .hidden { display: none !important; }
+
+  /* Clock time row */
+  .clock-time-row {
+    display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; justify-content: center;
+    width: 100%;
+  }
+  .clock-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 120px; height: 4px;
+    background: var(--border-dim); border-radius: 2px; outline: none; cursor: pointer;
+  }
+  .clock-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--border); cursor: pointer;
+    border: 1.5px solid var(--ink-light);
+  }
+  .clock-number {
+    font-family: 'Lora', serif; font-size: 11px;
+    width: 54px; padding: 4px 6px; text-align: center;
+    background: var(--paper); border: 1.5px solid var(--border-dim);
+    border-radius: 4px; color: var(--ink-mid); outline: none;
+  }
+  .clock-number:focus { border-color: var(--border); }
+
+  /* Turn clock (centered below status) */
+  .turn-clock {
+    font-family: 'Cinzel', serif; font-weight: 700;
+    font-size: 20px; letter-spacing: 1px; margin-top: 4px;
+    color: var(--ink-mid); transition: color 0.3s;
+  }
+  .turn-clock.urgent { color: var(--red-ink); animation: inkPulse 0.5s ease infinite alternate; }
+
+  /* Chess clock (on each player card) */
+  .chess-clock {
+    font-family: 'Cinzel', serif; font-weight: 700;
+    font-size: 15px; color: var(--ink-mid); margin-top: 2px;
+    transition: color 0.3s;
+  }
+  .chess-clock.urgent { color: var(--red-ink); }
+
+  /* Draws badge */
+  .draws-badge {
+    font-family: 'Cinzel', serif; font-size: 9px;
+    letter-spacing: 1.5px; color: var(--ink-light);
+    text-transform: uppercase; margin-top: 5px;
+  }
 
   /* ── HUD ── */
   .hud {
@@ -504,6 +549,39 @@
 
   /* When player is X (right side by default), flip HUD so they're always on the left */
   .hud.my-sym-x { flex-direction: row-reverse; }
+
+  /* ── BOARD AREA wrapper ── */
+  .board-area {
+    position: relative;
+    width: 100%; max-width: 580px;
+    display: flex; flex-direction: column; align-items: center; gap: 0;
+  }
+
+  /* ── BOARD OVERLAY (ready / pause) ── */
+  .board-overlay {
+    position: absolute; inset: 0;
+    background: rgba(235,215,160,0.96);
+    backdrop-filter: blur(5px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50;
+    text-align: center;
+    flex-direction: column; gap: 8px;
+    border-radius: 8px;
+  }
+  .board-overlay.hidden { display: none; }
+  .overlay-sym {
+    font-family: 'Cinzel', serif; font-weight: 900;
+    font-size: 72px; line-height: 1;
+    margin-bottom: 4px;
+  }
+  .overlay-heading {
+    font-family: 'Cinzel', serif; font-weight: 700;
+    font-size: 20px; letter-spacing: 2px; color: var(--ink);
+  }
+  .overlay-sub {
+    font-family: 'Lora', serif; font-size: 13px;
+    color: var(--ink-light); margin-top: 4px;
+  }
 </style>
 </head>
 <body>
@@ -525,8 +603,18 @@
       </div>
     </div>
 
+    <!-- 2P-only: goes first -->
+    <div class="ctrl-group" id="twopFirstGroup">
+      <span class="ctrl-label">Goes First:</span>
+      <div class="seg-row">
+        <button class="seg active-sel" id="twopFirstO" style="color:var(--blue-ink)">O</button>
+        <button class="seg" id="twopFirstX" style="color:var(--red-ink)">X</button>
+        <button class="seg" id="twopFirstRandom">Random</button>
+        <button class="seg" id="twopFirstAlt">Alternate</button>
+      </div>
+    </div>
+
     <!-- AI-only options -->
-    <div class="ctrl-divider ai-only hidden" id="aiDivider1"></div>
     <div class="ctrl-group ai-only hidden" id="diffGroup">
       <span class="ctrl-label">Difficulty:</span>
       <div class="seg-row">
@@ -536,7 +624,6 @@
       </div>
     </div>
 
-    <div class="ctrl-divider ai-only hidden" id="aiDivider2"></div>
     <div class="ctrl-group ai-only hidden" id="firstGroup">
       <span class="ctrl-label">Goes First:</span>
       <div class="seg-row">
@@ -548,7 +635,6 @@
     </div>
 
     <!-- Online-only: goes first -->
-    <div class="ctrl-divider hidden" id="onlineDivider"></div>
     <div class="ctrl-group hidden" id="onlineFirstGroup">
       <span class="ctrl-label">Goes First:</span>
       <div class="seg-row">
@@ -558,21 +644,43 @@
         <button class="seg" id="onlineFirstAlt">Alternate</button>
       </div>
     </div>
+
+    <!-- Clock (2P and online only) -->
+    <div class="ctrl-group" id="clockGroup">
+      <span class="ctrl-label">Clock:</span>
+      <div class="seg-row">
+        <button class="seg active-sel" id="clockOff">Off</button>
+        <button class="seg" id="clockTurn">Turn</button>
+        <button class="seg" id="clockChess">Chess</button>
+      </div>
+    </div>
+    <div class="clock-time-row hidden" id="clockTimeGroup">
+      <span class="ctrl-label" id="clockTimeLabel">30s / turn</span>
+      <input type="range" id="clockSlider" min="5" max="300" step="5" value="30" class="clock-slider">
+      <input type="text" id="clockInput" placeholder="0:30" class="clock-number" maxlength="7">
+    </div>
   </div>
+
+  <!-- ── BOARD AREA (overlay only covers this) ── -->
+  <div class="board-area" id="boardArea">
 
   <!-- ── HUD ── -->
   <div class="hud" id="hud">
     <div class="player-card active-o" id="cardO">
       <div class="player-sym o-sym">O</div>
       <div class="player-score" id="scoreO">0</div>
+      <div class="chess-clock hidden" id="clockO">5:00</div>
       <div class="player-label" id="labelO">PLAYER 1</div>
     </div>
     <div class="status-center">
       <div class="status-text sx" id="statusText">Player X's Turn</div>
+      <div class="turn-clock hidden" id="turnClock">0:30</div>
+      <div class="draws-badge hidden" id="drawsBadge">DRAWS: 0</div>
     </div>
     <div class="player-card" id="cardX">
       <div class="player-sym x-sym">X</div>
       <div class="player-score" id="scoreX">0</div>
+      <div class="chess-clock hidden" id="clockX">5:00</div>
       <div class="player-label" id="labelX">PLAYER 2</div>
     </div>
   </div>
@@ -581,9 +689,34 @@
 
   <div class="mega-board" id="megaBoard"></div>
 
+  <!-- ── BOARD OVERLAY (ready / pause) — sits inside board-area ── -->
+  <div id="boardOverlay" class="board-overlay hidden">
+    <!-- Ready screen -->
+    <div id="overlayReady">
+      <div class="overlay-sym" id="overlayReadySym">O</div>
+      <div class="overlay-heading" id="overlayReadyText">Player O — Ready?</div>
+      <button class="btn btn-new" id="btnReady" style="margin-top:16px;font-size:14px;padding:12px 36px;">Ready</button>
+    </div>
+    <!-- Chess online: you clicked ready, waiting for opponent -->
+    <div id="overlayReadyWait" class="hidden">
+      <div class="overlay-sym" id="overlayReadyWaitSym">O</div>
+      <div class="overlay-heading">You're ready!</div>
+      <p class="overlay-sub" style="margin-top:8px">Waiting for opponent…</p>
+    </div>
+    <!-- Pause screen -->
+    <div id="overlayPause" class="hidden">
+      <div class="overlay-heading" id="overlayPauseHeading">Game Paused</div>
+      <p class="overlay-sub" id="overlayPauseSub">Clock is stopped.</p>
+      <button class="btn btn-new" id="btnResume" style="margin-top:16px;font-size:14px;padding:12px 36px;">▶ Resume</button>
+    </div>
+  </div>
+
+  </div><!-- end .board-area -->
+
   <div class="actions">
     <button class="btn btn-new" id="btnNew">New Game</button>
     <button class="btn" id="btnReset">Reset Scores</button>
+    <button class="btn hidden" id="btnPause">⏸ Pause</button>
     <button class="rules-toggle" id="btnRules">How to play ↓</button>
     <button class="rules-toggle" id="btnHints">Hints ↓</button>
   </div>
@@ -670,28 +803,46 @@
 // ════════════════════════════════════════════
 let vsAI         = false;
 let aiDifficulty = 'easy';
-let firstMover   = 'player';
+let firstMover   = 'player';   // AI mode goes-first
+let twopFirst    = 'O';        // 2P mode goes-first: 'O'|'X'|'random'|'alternate'
+let twopGameCount= 0;          // for 2P alternate
 let aiThinking   = false;
 let hintDest     = false;
 let hintPass     = true;
 let onlineMode      = false;
-let mySymbol        = null;   // 'O' (host) or 'X' (guest)
+let mySymbol        = null;
 let roomCode        = null;
 let roomRef         = null;
-let onlineFirst     = 'random'; // 'you'|'them'|'random'|'alternate'
-let onlineGameCount = 0;        // for online alternating
-let aiGameCount     = 0;        // for AI alternating
+let onlineFirst     = 'random';
+let onlineGameCount = 0;
+let aiGameCount     = 0;
+let gamePaused      = false;
+let readyPending    = false;  // clock is on and waiting for ready tap
 
 // ════════════════════════════════════════════
 //  GAME STATE
 // ════════════════════════════════════════════
-let scores       = {X:0, O:0};
+let scores       = {X:0, O:0, D:0};
 let currentPlayer;
-let miniStates;   // Array[9] of Array[9]
-let miniWinners;  // null | 'X' | 'O' | 'D'
-let forcedBoard;  // null | 0-8
+let miniStates;
+let miniWinners;
+let forcedBoard;
 let gameOver;
-let lastMove;     // {bi, ci} | null
+let lastMove;
+
+// ── Clock state ──────────────────────────────
+let clockMode      = 'off';
+let clockTurnSec   = 30;
+let clockChessSec  = 300;
+let clockTimer     = null;
+let turnTimeLeft   = 30;
+let chessTimeLeft  = {O:300, X:300};
+let clockLoser     = null;
+let pausedBy       = null;
+let savedTurnTime  = 30;     // fallback to current turn allotment if never explicitly saved
+let savedChessTime = {O:300, X:300};
+let onlineReadyState = {O:false, X:false};
+let lastHandledGameCount = -1; // prevents reset branch re-firing on readyO/readyX writes
 
 const WIN_LINES     = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
 const CELL_WEIGHTS  = [3,2,3, 2,4,2, 3,2,3];
@@ -703,14 +854,17 @@ const aiSym    = () => 'X';
 
 function resolveFirstPlayer() {
   if (onlineMode) {
-    // host is always O, guest is always X
-    // 'you' = host (O) first, 'them' = guest (X) first
     if (onlineFirst === 'you')       return 'O';
     if (onlineFirst === 'them')      return 'X';
     if (onlineFirst === 'alternate') return (onlineGameCount % 2 === 0) ? 'O' : 'X';
+    return Math.random() < 0.5 ? 'O' : 'X';
+  }
+  if (!vsAI) {
+    if (twopFirst === 'O')         return 'O';
+    if (twopFirst === 'X')         return 'X';
+    if (twopFirst === 'alternate') return (twopGameCount % 2 === 0) ? 'O' : 'X';
     return Math.random() < 0.5 ? 'O' : 'X'; // random
   }
-  if (!vsAI) return 'X';
   if (firstMover === 'player')    return 'O';
   if (firstMover === 'ai')        return 'X';
   if (firstMover === 'alternate') return (aiGameCount % 2 === 0) ? 'O' : 'X';
@@ -745,6 +899,7 @@ function isMetaDraw(mw) {
 function initGame() {
   if (onlineMode) onlineGameCount++;
   if (vsAI) aiGameCount++;
+  if (!vsAI && !onlineMode) twopGameCount++;
   currentPlayer = resolveFirstPlayer();
   miniStates    = Array.from({length:9}, ()=>Array(9).fill(null));
   miniWinners   = Array(9).fill(null);
@@ -752,13 +907,41 @@ function initGame() {
   gameOver      = false;
   aiThinking    = false;
   lastMove      = null;
+  gamePaused    = false;
+  readyPending  = false;
+  clockLoser    = null;
+  pausedBy      = null;
+  const btn = document.getElementById('btnPause');
+  btn.textContent = '⏸ Pause';
+  btn.disabled = false;
+  btn.style.opacity = '';
+  onlineReadyState = {O:false, X:false};
+  chessTimeLeft = {O: clockChessSec, X: clockChessSec};
+  stopClock();
+  hideOverlay();
   renderAll();
   updateHUD();
   updateLabels();
-  // If AI goes first, kick it off
+  updateChessClockDisplay();
+  updatePauseButtonVisibility();
   if (vsAI && currentPlayer === aiSym()) triggerAI();
-  // In online mode, host writes the fresh state so both players sync
-  if (onlineMode && mySymbol === 'O') syncToFirebase('reset');
+  if (onlineMode && mySymbol === 'O') {
+    syncToFirebase('reset'); // includes pausedBy:'none', readyO/X:false
+  }
+  // Show ready screen when clock is on
+  if (clockMode !== 'off' && !vsAI) {
+    if (onlineMode && (clockMode === 'chess' || clockMode === 'turn')) {
+      // Both players need to ready up
+      showReadyScreen();
+    } else if (!onlineMode) {
+      // Local 2P — show for the starting player
+      showReadyScreen();
+    } else {
+      startClock();
+    }
+  } else {
+    startClock();
+  }
 }
 
 // ════════════════════════════════════════════
@@ -837,7 +1020,7 @@ function buildMiniBoard(bi) {
 //  HUMAN CLICK
 // ════════════════════════════════════════════
 function handleClick(e) {
-  if (gameOver || aiThinking) return;
+  if (gameOver || aiThinking || gamePaused || readyPending) return;
   if (vsAI && currentPlayer === aiSym()) return;
   if (onlineMode && currentPlayer !== mySymbol) return;
   applyMove(+e.target.dataset.bi, +e.target.dataset.ci);
@@ -867,9 +1050,9 @@ function applyMove(bi, ci) {
     gameOver = true;
     const w = metaResult.winner;
     scores[w]++;
-    document.getElementById('scoreX').textContent = scores.X;
-    document.getElementById('scoreO').textContent = scores.O;
+    updateScoreDisplay();
     aiThinking = false;
+    stopClock();
     renderAll();
     highlightMetaWin(metaResult.line, w);
     document.getElementById('megaBoard').classList.add('game-over');
@@ -881,17 +1064,22 @@ function applyMove(bi, ci) {
     setStatus(label, w==='X'?'sx win':'so win');
     setHint('', '');
     updateCards(null);
+    updatePauseButtonVisibility();
     if (onlineMode) syncToFirebase();
     return;
   }
 
   if (miniWinners.every(w=>w!==null) || isMetaDraw(miniWinners)) {
     gameOver = true; aiThinking = false;
+    scores.D++;
+    updateScoreDisplay();
+    stopClock();
     renderAll();
     document.getElementById('megaBoard').classList.add('game-draw');
     setStatus('The game is a draw.', 'win');
     setHint('', '');
     updateCards(null);
+    updatePauseButtonVisibility();
     if (onlineMode) syncToFirebase();
     return;
   }
@@ -901,6 +1089,7 @@ function applyMove(bi, ci) {
   renderAll();
   updateHUD();
   if (onlineMode) syncToFirebase();
+  startClock();
   if (vsAI && currentPlayer===aiSym() && !gameOver) triggerAI();
 }
 
@@ -1094,34 +1283,220 @@ function highlightMetaWin(line, winner) {
   document.querySelectorAll('.mini-board').forEach((b,i)=>{ if(line.includes(i)) b.classList.add(cls); });
 }
 
+// ── Score display ─────────────────────────────
+function updateScoreDisplay() {
+  document.getElementById('scoreX').textContent = scores.X;
+  document.getElementById('scoreO').textContent = scores.O;
+  const badge = document.getElementById('drawsBadge');
+  badge.textContent = `DRAWS: ${scores.D}`;
+  badge.classList.toggle('hidden', scores.D === 0);
+}
+
+// ════════════════════════════════════════════
+//  CLOCK
+// ════════════════════════════════════════════
+function formatClockTime(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}:${s.toString().padStart(2,'0')}`;
+}
+// Always m:ss for the input field
+function formatMSS(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${m}:${s.toString().padStart(2,'0')}`;
+}
+// Parse "m:ss", ":ss", or plain number — returns seconds
+function parseMSS(str) {
+  str = str.trim();
+  if (/^\d+$/.test(str)) return Math.max(5, Math.min(3600, parseInt(str)));
+  const parts = str.split(':');
+  if (parts.length === 2) {
+    const m = parseInt(parts[0]) || 0;
+    const s = parseInt(parts[1]) || 0;
+    return Math.max(5, Math.min(3600, m * 60 + s));
+  }
+  return null; // invalid
+}
+
+function updateTurnClockDisplay() {
+  const el = document.getElementById('turnClock');
+  el.textContent = formatClockTime(turnTimeLeft);
+  el.classList.toggle('urgent', turnTimeLeft <= 10);
+}
+
+function updateChessClockDisplay() {
+  ['O','X'].forEach(sym => {
+    const el = document.getElementById('clock'+sym);
+    const t = chessTimeLeft[sym];
+    el.textContent = formatClockTime(t);
+    el.classList.toggle('urgent', t <= 30);
+  });
+}
+
+function setClockDisplayVisible() {
+  const isTurn  = clockMode === 'turn';
+  const isChess = clockMode === 'chess';
+  // In online mode the turn clock is shown/hidden per-turn by startClock/resumeClock.
+  // For local modes always show it; for online only show initially (startClock will hide if not your turn).
+  document.getElementById('turnClock').classList.toggle('hidden', !isTurn);
+  document.getElementById('clockO').classList.toggle('hidden', !isChess);
+  document.getElementById('clockX').classList.toggle('hidden', !isChess);
+}
+
+function startClock() {
+  stopClock();
+  if (clockMode === 'off' || gameOver || vsAI || gamePaused) return;
+  // In online mode, only run clock on your own turn
+  if (onlineMode && currentPlayer !== mySymbol) {
+    // Hide the turn clock when it's the opponent's turn
+    if (clockMode === 'turn') document.getElementById('turnClock').classList.add('hidden');
+    return;
+  }
+  // Show the turn clock when it's your turn
+  if (clockMode === 'turn') document.getElementById('turnClock').classList.remove('hidden');
+
+  if (clockMode === 'turn') {
+    turnTimeLeft = clockTurnSec;
+    updateTurnClockDisplay();
+    clockTimer = setInterval(() => {
+      turnTimeLeft--;
+      updateTurnClockDisplay();
+      if (turnTimeLeft <= 0) { stopClock(); handleClockExpiry(); }
+    }, 1000);
+  } else if (clockMode === 'chess') {
+    updateChessClockDisplay();
+    clockTimer = setInterval(() => {
+      chessTimeLeft[currentPlayer]--;
+      updateChessClockDisplay();
+      if (chessTimeLeft[currentPlayer] <= 0) { stopClock(); handleClockExpiry(); }
+    }, 1000);
+  }
+}
+
+function stopClock() {
+  if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+}
+
+// Resume from saved times (after pause) — does NOT reset to full time
+function resumeClock() {
+  stopClock();
+  if (clockMode === 'off' || gameOver || vsAI) return;
+  if (onlineMode && currentPlayer !== mySymbol) {
+    if (clockMode === 'turn') document.getElementById('turnClock').classList.add('hidden');
+    return;
+  }
+  if (clockMode === 'turn') document.getElementById('turnClock').classList.remove('hidden');
+
+  if (clockMode === 'turn') {
+    // Restore saved turn time; fall back to full allotment if save was never set
+    if (savedTurnTime > 0) turnTimeLeft = savedTurnTime;
+    updateTurnClockDisplay();
+    clockTimer = setInterval(() => {
+      turnTimeLeft--;
+      updateTurnClockDisplay();
+      if (turnTimeLeft <= 0) { stopClock(); handleClockExpiry(); }
+    }, 1000);
+  } else if (clockMode === 'chess') {
+    // Restore saved chess times; only restore if saves are non-zero
+    if (savedChessTime.O > 0 || savedChessTime.X > 0) {
+      chessTimeLeft = {O: savedChessTime.O, X: savedChessTime.X};
+    }
+    updateChessClockDisplay();
+    clockTimer = setInterval(() => {
+      chessTimeLeft[currentPlayer]--;
+      updateChessClockDisplay();
+      if (chessTimeLeft[currentPlayer] <= 0) { stopClock(); handleClockExpiry(); }
+    }, 1000);
+  }
+}
+
+function handleClockExpiry() {
+  gameOver = true;
+  const loser  = currentPlayer;
+  const winner = loser === 'X' ? 'O' : 'X';
+  clockLoser = loser;
+  scores[winner]++;
+  updateScoreDisplay();
+  renderAll();
+  document.getElementById('megaBoard').classList.add('game-over');
+  const label = onlineMode
+    ? (winner === mySymbol ? 'Victory! Time expired.' : 'You ran out of time.')
+    : `Player ${loser} ran out of time!`;
+  setStatus(label, winner==='X'?'sx win':'so win');
+  setHint('', '');
+  updateCards(null);
+  updatePauseButtonVisibility();
+  if (onlineMode) syncToFirebase();
+}
+
+function syncClockUI() {
+  // Highlight the correct clock mode button
+  document.querySelectorAll('#clockGroup .seg').forEach(s=>s.classList.remove('active-sel'));
+  document.getElementById('clock'+clockMode.charAt(0).toUpperCase()+clockMode.slice(1)).classList.add('active-sel');
+  // Show/hide time input row
+  document.getElementById('clockTimeGroup').classList.toggle('hidden', clockMode === 'off');
+  // Update label and slider for current mode
+  if (clockMode === 'turn') {
+    document.getElementById('clockSlider').min = 5;
+    document.getElementById('clockSlider').max = 300;
+    document.getElementById('clockSlider').step = 5;
+    document.getElementById('clockSlider').value = clockTurnSec;
+    document.getElementById('clockInput').value = formatMSS(clockTurnSec);
+    document.getElementById('clockTimeLabel').textContent = formatClockTime(clockTurnSec)+' / turn';
+  } else if (clockMode === 'chess') {
+    document.getElementById('clockSlider').min = 60;
+    document.getElementById('clockSlider').max = 3600;
+    document.getElementById('clockSlider').step = 30;
+    document.getElementById('clockSlider').value = clockChessSec;
+    document.getElementById('clockInput').value = formatMSS(clockChessSec);
+    document.getElementById('clockTimeLabel').textContent = formatClockTime(clockChessSec)+' / player';
+  }
+  setClockDisplayVisible();
+}
+
 // ════════════════════════════════════════════
 //  TOGGLE AI-ONLY CONTROLS
 // ════════════════════════════════════════════
 function setAIControlsVisible(visible) {
-  ['aiDivider1','aiDivider2','diffGroup','firstGroup'].forEach(id=>{
+  ['diffGroup','firstGroup'].forEach(id=>{
     const el=document.getElementById(id);
     if(visible) el.classList.remove('hidden');
     else el.classList.add('hidden');
   });
+  // 2P goes-first only visible in 2P mode
+  document.getElementById('twopFirstGroup').classList.toggle('hidden', visible);
+  // Clock only shows in non-CPU modes
+  document.getElementById('clockGroup').classList.toggle('hidden', visible);
+  document.getElementById('clockTimeGroup').classList.toggle('hidden', visible || clockMode === 'off');
 }
 function setOnlineControlsVisible(visible) {
-  ['onlineDivider','onlineFirstGroup'].forEach(id=>{
+  ['onlineFirstGroup'].forEach(id=>{
     const el=document.getElementById(id);
     if(visible) el.classList.remove('hidden');
     else el.classList.add('hidden');
   });
+  // Hide 2P first group in online mode
+  document.getElementById('twopFirstGroup').classList.toggle('hidden', visible);
   // Hide New Game / Reset Scores for guest; host keeps them
   const isGuest = visible && mySymbol === 'X';
   document.getElementById('btnNew').classList.toggle('hidden', isGuest);
   document.getElementById('btnReset').classList.toggle('hidden', isGuest);
   if (visible) {
     syncOnlineFirstUI();
-    // Guest: dim goes-first buttons so they're read-only
+    const isGuest = mySymbol === 'X';
+    // Guest: read-only for goes-first and clock
     document.querySelectorAll('#onlineFirstGroup .seg').forEach(s=>{
       s.disabled = isGuest;
       s.style.opacity = isGuest ? '0.45' : '';
       s.style.cursor  = isGuest ? 'default' : '';
     });
+    document.querySelectorAll('#clockGroup .seg, #clockSlider').forEach(s=>{
+      s.disabled = isGuest;
+      s.style.opacity = isGuest ? '0.45' : '';
+      s.style.cursor  = isGuest ? 'default' : '';
+    });
+    const ci = document.getElementById('clockInput');
+    ci.readOnly = isGuest; ci.style.opacity = isGuest ? '0.45' : '';
   } else {
     // Restore buttons when leaving online mode
     document.getElementById('btnNew').classList.remove('hidden');
@@ -1133,20 +1508,15 @@ function setOnlineControlsVisible(visible) {
 //  CONTROLS
 // ════════════════════════════════════════════
 document.getElementById('btnNew').addEventListener('click', ()=>{
-  if (onlineMode) { initGame(); return; }
+  if (gameHasStarted() && !gameOver) {
+    if (!confirm('Start a new game? The current game will be abandoned.')) return;
+  }
   initGame();
 });
 document.getElementById('btnReset').addEventListener('click', ()=>{
-  if (onlineMode) {
-    scores={X:0,O:0};
-    document.getElementById('scoreX').textContent=0;
-    document.getElementById('scoreO').textContent=0;
-    initGame();
-    return;
-  }
-  scores={X:0,O:0};
-  document.getElementById('scoreX').textContent=0;
-  document.getElementById('scoreO').textContent=0;
+  if (!confirm('Reset all scores?')) return;
+  scores={X:0,O:0,D:0};
+  updateScoreDisplay();
   initGame();
 });
 document.getElementById('btnRules').addEventListener('click', ()=>{
@@ -1161,6 +1531,7 @@ document.getElementById('btnRules').addEventListener('click', ()=>{
 document.getElementById('mode2p').addEventListener('click', ()=>{
   if (onlineMode) leaveOnlineMode();
   vsAI=false;
+  clockMode='off'; syncClockUI();
   document.getElementById('mode2p').classList.add('active-sel');
   document.getElementById('modeAI').classList.remove('active-sel');
   document.getElementById('modeOnline').classList.remove('active-sel');
@@ -1170,6 +1541,7 @@ document.getElementById('mode2p').addEventListener('click', ()=>{
 document.getElementById('modeAI').addEventListener('click', ()=>{
   if (onlineMode) leaveOnlineMode();
   vsAI=true;
+  clockMode='off'; syncClockUI();
   document.getElementById('modeAI').classList.add('active-sel');
   document.getElementById('mode2p').classList.remove('active-sel');
   document.getElementById('modeOnline').classList.remove('active-sel');
@@ -1233,41 +1605,150 @@ document.getElementById('hintPassOff').addEventListener('click', ()=>{
 });
 
 // ════════════════════════════════════════════
-//  FIREBASE + ONLINE MULTIPLAYER
+//  OVERLAY (ready / pause)
 // ════════════════════════════════════════════
-firebase.initializeApp({
-  apiKey:            "AIzaSyBamXu8rcXcxJzWjwYJ3KcAuc48iKppLrE",
-  authDomain:        "ultimate-tic-tac-toe-d513d.firebaseapp.com",
-  databaseURL:       "https://ultimate-tic-tac-toe-d513d-default-rtdb.firebaseio.com",
-  projectId:         "ultimate-tic-tac-toe-d513d",
-  storageBucket:     "ultimate-tic-tac-toe-d513d.firebasestorage.app",
-  messagingSenderId: "265163098071",
-  appId:             "1:265163098071:web:893ca901776648477aad92"
-});
-const db = firebase.database();
+function showReadyScreen() {
+  readyPending = true;
+  gamePaused   = false;
+  const sym  = onlineMode ? mySymbol : currentPlayer;
+  const isX  = sym === 'X';
+  document.getElementById('overlayReadySym').textContent = sym;
+  document.getElementById('overlayReadySym').style.color = isX ? 'var(--red-ink)' : 'var(--blue-ink)';
+  const name = onlineMode ? 'You' : `Player ${sym}`;
+  document.getElementById('overlayReadyText').textContent = `${name} — Ready?`;
+  document.getElementById('overlayReady').classList.remove('hidden');
+  document.getElementById('overlayReadyWait').classList.add('hidden');
+  document.getElementById('overlayPause').classList.add('hidden');
+  document.getElementById('boardOverlay').classList.remove('hidden');
+}
+
+function showReadyWaiting(sym) {
+  // Chess online: you clicked ready, waiting for opponent
+  const isX = sym === 'X';
+  document.getElementById('overlayReadyWaitSym').textContent = sym;
+  document.getElementById('overlayReadyWaitSym').style.color = isX ? 'var(--red-ink)' : 'var(--blue-ink)';
+  document.getElementById('overlayReady').classList.add('hidden');
+  document.getElementById('overlayReadyWait').classList.remove('hidden');
+  document.getElementById('overlayPause').classList.add('hidden');
+  document.getElementById('boardOverlay').classList.remove('hidden');
+}
+
+function hideOverlay() {
+  document.getElementById('boardOverlay').classList.add('hidden');
+  readyPending = false;
+  gamePaused   = false;
+}
+
+function showPauseScreen(pauserSym) {
+  pausedBy   = pauserSym;
+  gamePaused = true;
+  // Snapshot current clock times before stopping
+  savedTurnTime  = turnTimeLeft;
+  savedChessTime = {O: chessTimeLeft.O, X: chessTimeLeft.X};
+  stopClock();
+
+  // Online: only the pauser can resume. Local 2P: shared screen, anyone can resume.
+  const iAmPauser = onlineMode ? (pauserSym === mySymbol) : true;
+  const pauserName = onlineMode ? 'Opponent' : `Player ${pauserSym}`;
+
+  document.getElementById('overlayPauseHeading').textContent = 'Game Paused';
+  document.getElementById('overlayPauseSub').textContent =
+    iAmPauser ? '' : `Paused by ${pauserName}. Waiting…`;
+  document.getElementById('btnResume').classList.toggle('hidden', !iAmPauser);
+  document.getElementById('overlayPause').classList.remove('hidden');
+  document.getElementById('overlayReady').classList.add('hidden');
+  document.getElementById('overlayReadyWait').classList.add('hidden');
+  document.getElementById('boardOverlay').classList.remove('hidden');
+
+  // Action bar button: pauser (and both local 2P players) see ▶ Resume; online non-pauser sees greyed ⏸
+  if (iAmPauser) {
+    document.getElementById('btnPause').textContent = '▶ Resume';
+    document.getElementById('btnPause').disabled = false;
+    document.getElementById('btnPause').style.opacity = '';
+  } else {
+    document.getElementById('btnPause').textContent = '⏸ Pause';
+    document.getElementById('btnPause').disabled = true;
+    document.getElementById('btnPause').style.opacity = '0.4';
+  }
+
+  if (onlineMode && roomRef) roomRef.update({ pausedBy: pauserSym });
+}
+
+function resumeGame() {
+  hideOverlay();       // sets gamePaused = false
+  pausedBy = null;
+  const btn = document.getElementById('btnPause');
+  btn.textContent = '⏸ Pause';
+  btn.disabled = false;
+  btn.style.opacity = '';
+  if (onlineMode && roomRef) roomRef.update({ pausedBy: 'none' });
+  resumeClock();
+}
+
+function updatePauseButtonVisibility() {
+  const show = clockMode !== 'off' && !gameOver && !vsAI;
+  document.getElementById('btnPause').classList.toggle('hidden', !show);
+  if (show && !gamePaused) {
+    document.getElementById('btnPause').disabled = false;
+    document.getElementById('btnPause').style.opacity = '';
+  }
+}
+let db = null;
+try {
+  firebase.initializeApp({
+    apiKey:            "AIzaSyBamXu8rcXcxJzWjwYJ3KcAuc48iKppLrE",
+    authDomain:        "ultimate-tic-tac-toe-d513d.firebaseapp.com",
+    databaseURL:       "https://ultimate-tic-tac-toe-d513d-default-rtdb.firebaseio.com",
+    projectId:         "ultimate-tic-tac-toe-d513d",
+    storageBucket:     "ultimate-tic-tac-toe-d513d.firebasestorage.app",
+    messagingSenderId: "265163098071",
+    appId:             "1:265163098071:web:893ca901776648477aad92"
+  });
+  db = firebase.database();
+} catch(e) {
+  console.warn('Firebase failed to load — online mode unavailable.', e);
+  // Disable the Online button gracefully
+  const btn = document.getElementById('modeOnline');
+  if (btn) { btn.disabled = true; btn.title = 'Online unavailable (check connection)'; btn.style.opacity = '0.4'; }
+}
 
 // ── State serialization ───────────────────────
 function serializeState() {
   return JSON.stringify({
     ms: miniStates, mw: miniWinners, cp: currentPlayer,
-    fb: forcedBoard, lm: lastMove,   go: gameOver, sc: scores
+    fb: forcedBoard, lm: lastMove,   go: gameOver, sc: scores,
+    ctl: chessTimeLeft, cl: clockLoser
   });
 }
 function deserializeState(str) {
   const s = JSON.parse(str);
   miniStates = s.ms; miniWinners = s.mw; currentPlayer = s.cp;
   forcedBoard = s.fb; lastMove = s.lm; gameOver = s.go; scores = s.sc;
-  document.getElementById('scoreX').textContent = scores.X;
-  document.getElementById('scoreO').textContent = scores.O;
+  if (s.ctl) chessTimeLeft = s.ctl;
+  clockLoser = s.cl || null;
+  updateScoreDisplay();
 }
 function syncToFirebase(tag) {
-  if (!roomRef) return;
-  roomRef.update({
+  if (!roomRef || !db) return;
+  const update = {
     state: serializeState(),
     lastMoveBy: tag || mySymbol,
     onlineFirst,
-    gameCount: onlineGameCount
-  });
+    gameCount: onlineGameCount,
+    clockMode, clockTurnSec, clockChessSec
+  };
+  // On a new-game reset, clear pause/ready state atomically so listeners never
+  // see a snapshot with lastMoveBy:'reset' but a stale pausedBy still set.
+  if (tag === 'reset') {
+    update.pausedBy = 'none';
+    update.readyO   = false;
+    update.readyX   = false;
+  }
+  roomRef.update(update);
+}
+function syncClockSettingsToFirebase() {
+  if (!roomRef || !db) return;
+  roomRef.update({ clockMode, clockTurnSec, clockChessSec });
 }
 
 // ── Room code ─────────────────────────────────
@@ -1297,6 +1778,7 @@ function showJoinError(msg) {
 
 // ── Create room ───────────────────────────────
 async function createRoom() {
+  if (!db) { alert('Online mode unavailable — check your internet connection.'); return; }
   const code = genCode();
   roomCode = code; mySymbol = 'O';
   roomRef  = db.ref('rooms/' + code);
@@ -1334,6 +1816,7 @@ function updateWaitingText() {
 
 // ── Join room ─────────────────────────────────
 async function joinRoom() {
+  if (!db) { showJoinError('Online mode unavailable — check your connection.'); return; }
   const code = document.getElementById('joinCodeInput').value.toUpperCase().trim();
   if (code.length !== 4) { showJoinError('Please enter a 4-letter code.'); return; }
 
@@ -1360,6 +1843,7 @@ async function joinRoom() {
 function startOnlineGame() {
   onlineMode = true;
   vsAI = false;
+  clockMode = 'off'; syncClockUI();
   hideLobby();
 
   ['mode2p','modeAI'].forEach(id => document.getElementById(id).classList.remove('active-sel'));
@@ -1382,28 +1866,111 @@ function startOnlineGame() {
       gameOver = true; renderAll(); updateCards(null); return;
     }
 
+    // Pick up pause state
+    if (data.pausedBy !== undefined) {
+      const fbPausedBy = data.pausedBy;
+      const isActuallyPaused = fbPausedBy && fbPausedBy !== 'none';
+      if (isActuallyPaused && !gamePaused && !gameOver) {
+        showPauseScreen(fbPausedBy);
+        return;
+      } else if (!isActuallyPaused && gamePaused && pausedBy !== mySymbol) {
+        resumeGame();
+        return;
+      }
+    }
+
+    // Online dual-ready (chess and turn): pick up opponent's ready signal
+    if ((clockMode === 'chess' || clockMode === 'turn') && !gameOver) {
+      const ro = data.readyO || false;
+      const rx = data.readyX || false;
+      onlineReadyState.O = ro;
+      onlineReadyState.X = rx;
+      if (ro && rx && readyPending) {
+        hideOverlay();
+        updatePauseButtonVisibility();
+        startClock();
+        return; // both ready — nothing else to do this tick
+      }
+    }
+
     // Always pick up settings changes regardless of whose move it was
     if (data.onlineFirst && data.onlineFirst !== onlineFirst) {
       onlineFirst = data.onlineFirst; syncOnlineFirstUI();
     }
     if (data.gameCount !== undefined) onlineGameCount = data.gameCount;
+    // Pick up clock settings from host
+    if (data.clockMode !== undefined && data.clockMode !== clockMode) {
+      clockMode = data.clockMode; clockTurnSec = data.clockTurnSec || clockTurnSec;
+      clockChessSec = data.clockChessSec || clockChessSec;
+      syncClockUI(); updatePauseButtonVisibility();
+      if (clockMode !== 'off' && !gameOver) {
+        onlineReadyState = {O:false, X:false};
+        showReadyScreen();
+      } else if (clockMode === 'off') {
+        hideOverlay();
+      }
+    } else if (data.clockTurnSec !== undefined && data.clockTurnSec !== clockTurnSec) {
+      clockTurnSec = data.clockTurnSec; syncClockUI();
+    } else if (data.clockChessSec !== undefined && data.clockChessSec !== clockChessSec) {
+      clockChessSec = data.clockChessSec; syncClockUI();
+    }
 
     // Apply opponent's move, or respond to a host-initiated reset
-    if (data.state && data.lastMoveBy !== mySymbol) {
-      // If it's a reset signal pushed by the host, both sides need fresh state
+    // Only process when lastMoveBy is explicitly set ('reset', 'O', or 'X') — never on null/undefined
+    if (data.state && data.lastMoveBy && data.lastMoveBy !== mySymbol) {
       if (data.lastMoveBy === 'reset') {
+        const gc = data.gameCount || 0;
+        if (gc === lastHandledGameCount) {
+          // This listener fired because readyO/readyX/pausedBy changed — not a new game.
+          // Just keep the ready screen up; don't re-process state.
+          return;
+        }
+        lastHandledGameCount = gc;
+        stopClock(); hideOverlay();
+        // Force-reset pause state regardless of who paused
+        gamePaused = false; pausedBy = null;
+        const pbtn = document.getElementById('btnPause');
+        pbtn.textContent = '⏸ Pause'; pbtn.disabled = false; pbtn.style.opacity = '';
         deserializeState(data.state);
         renderAll(); updateHUD(); updateLabels();
+        updateChessClockDisplay(); updatePauseButtonVisibility();
+        onlineReadyState = {O:false, X:false};
+        // Show ready screen for BOTH players when clock is on
+        if (clockMode !== 'off') {
+          showReadyScreen();
+        } else {
+          if (currentPlayer === mySymbol) startClock();
+        }
         return;
       }
       deserializeState(data.state);
       renderAll(); updateHUD();
       if (gameOver) {
+        stopClock();
         const mc = miniWinners.map(w=>(w==='X'||w==='O')?w:null);
         const mr = checkWin(mc);
-        if (mr && !mr.draw) { highlightMetaWin(mr.line, mr.winner); document.getElementById('megaBoard').classList.add('game-over'); }
-        else document.getElementById('megaBoard').classList.add('game-draw');
+        if (mr && !mr.draw) {
+          const w = mr.winner;
+          highlightMetaWin(mr.line, w);
+          document.getElementById('megaBoard').classList.add('game-over');
+          const label = w === mySymbol ? 'Victory! Well played.' : 'Opponent wins.';
+          setStatus(label, w==='X'?'sx win':'so win');
+        } else if (clockLoser) {
+          // Game ended by clock expiry
+          const winner = clockLoser === 'X' ? 'O' : 'X';
+          document.getElementById('megaBoard').classList.add('game-over');
+          const label = winner === mySymbol ? 'Victory! Time expired.' : 'You ran out of time.';
+          setStatus(label, winner==='X'?'sx win':'so win');
+        } else {
+          document.getElementById('megaBoard').classList.add('game-draw');
+          setStatus('The game is a draw.', 'win');
+        }
+        setHint('', '');
         updateCards(null);
+        updatePauseButtonVisibility();
+      } else {
+        // Opponent moved — start clock if it's now our turn
+        if (currentPlayer === mySymbol) startClock();
       }
     }
   });
@@ -1445,6 +2012,139 @@ document.getElementById('btnCancelWait').addEventListener('click', ()=>{
   if (roomRef) { roomRef.remove(); roomRef.off(); }
   roomRef = null; roomCode = null; mySymbol = null;
   showLobbyView('lobbyChoice');
+});
+
+// ── Clock setting change helper ────────────────
+// Applies fn() which updates clock vars, then restarts/shows ready if needed.
+// If a game is in progress, asks to confirm restart first (online: host only).
+function applyClockSettingChange(fn) {
+  if (gameHasStarted() && !gameOver) {
+    if (onlineMode && mySymbol !== 'O') { fn(); syncClockSettingsToFirebase(); return; } // guest: just update
+    if (!confirm('Change clock setting and restart the game?')) {
+      syncClockUI(); // revert displayed UI to current vars
+      return;
+    }
+    fn();
+    syncClockSettingsToFirebase();
+    onlineGameCount += onlineMode ? 1 : 0;
+    initGame();
+  } else {
+    fn();
+    syncClockSettingsToFirebase();
+    updatePauseButtonVisibility();
+    // Show ready screen if clock just turned on and game hasn't started
+    if (clockMode !== 'off' && !gameOver && !vsAI && !gameHasStarted()) {
+      hideOverlay();
+      if (onlineMode && (clockMode === 'chess' || clockMode === 'turn')) {
+        onlineReadyState = {O:false, X:false};
+        if (roomRef) roomRef.update({readyO:false, readyX:false});
+        showReadyScreen();
+      } else if (!onlineMode) {
+        showReadyScreen();
+      }
+    } else if (clockMode === 'off') {
+      hideOverlay();
+    }
+  }
+}
+
+// Clock mode buttons
+['Off','Turn','Chess'].forEach(mode => {
+  document.getElementById('clock'+mode).addEventListener('click', ()=>{
+    const newMode = mode.toLowerCase();
+    if (newMode === clockMode) return;
+    applyClockSettingChange(() => {
+      clockMode = newMode;
+      chessTimeLeft = {O: clockChessSec, X: clockChessSec};
+      stopClock();
+      updateChessClockDisplay();
+      syncClockUI();
+    });
+  });
+});
+
+// Clock slider
+document.getElementById('clockSlider').addEventListener('input', e=>{
+  const v = parseInt(e.target.value);
+  if (clockMode === 'turn') {
+    document.getElementById('clockInput').value = formatMSS(v);
+    document.getElementById('clockTimeLabel').textContent = formatClockTime(v)+' / turn';
+  } else {
+    document.getElementById('clockInput').value = formatMSS(v);
+    document.getElementById('clockTimeLabel').textContent = formatClockTime(v)+' / player';
+  }
+  // Slider fires continuously — update vars immediately, no restart prompt while dragging
+  if (clockMode === 'turn') clockTurnSec = v;
+  else { clockChessSec = v; chessTimeLeft = {O:v, X:v}; updateChessClockDisplay(); }
+  syncClockSettingsToFirebase();
+});
+
+// Clock text input (accepts m:ss or plain seconds)
+document.getElementById('clockInput').addEventListener('change', e=>{
+  const v = parseMSS(e.target.value);
+  if (v === null) { e.target.value = formatMSS(clockMode==='turn'?clockTurnSec:clockChessSec); return; }
+  applyClockSettingChange(() => {
+    if (clockMode === 'turn') {
+      clockTurnSec = v;
+      document.getElementById('clockSlider').value = Math.min(300, v);
+      document.getElementById('clockTimeLabel').textContent = formatClockTime(v)+' / turn';
+    } else {
+      clockChessSec = v;
+      chessTimeLeft = {O:v, X:v};
+      document.getElementById('clockSlider').value = Math.min(3600, v);
+      document.getElementById('clockTimeLabel').textContent = formatClockTime(v)+' / player';
+      updateChessClockDisplay();
+    }
+    e.target.value = formatMSS(v);
+    stopClock();
+  });
+});
+// Also allow pressing Enter to confirm
+document.getElementById('clockInput').addEventListener('keydown', e=>{
+  if (e.key === 'Enter') { e.target.blur(); }
+});
+
+// Ready button
+document.getElementById('btnReady').addEventListener('click', ()=>{
+  if (onlineMode && (clockMode === 'chess' || clockMode === 'turn')) {
+    // Write to Firebase first — this may fire the listener synchronously (local echo),
+    // which calls hideOverlay() and sets readyPending=false if both players are now ready.
+    onlineReadyState[mySymbol] = true;
+    roomRef && roomRef.update(mySymbol === 'O' ? {readyO:true} : {readyX:true});
+    // Only show "waiting" if the listener didn't already start the game
+    if (readyPending) showReadyWaiting(mySymbol);
+  } else {
+    // Local 2P
+    hideOverlay();
+    startClock();
+  }
+});
+
+// Resume button (inside the overlay)
+document.getElementById('btnResume').addEventListener('click', ()=>{
+  if (!gamePaused) return;
+  // Online: only pauser can resume. Local 2P: anyone can (shared screen).
+  if (!onlineMode || pausedBy === mySymbol) resumeGame();
+});
+
+// Pause button (in actions bar)
+document.getElementById('btnPause').addEventListener('click', ()=>{
+  if (gamePaused) {
+    if (!onlineMode || pausedBy === mySymbol) resumeGame();
+  } else if (!readyPending && !gameOver) {
+    showPauseScreen(onlineMode ? mySymbol : currentPlayer);
+  }
+});
+
+// 2P goes-first
+const twopFirstMap = {O:'O', X:'X', Random:'random', Alt:'alternate'};
+[['O','O'],['X','X'],['Random','random'],['Alt','alternate']].forEach(([id,key])=>{
+  document.getElementById('twopFirst'+id).addEventListener('click', ()=>{
+    twopFirst = key;
+    document.querySelectorAll('#twopFirstGroup .seg').forEach(s=>s.classList.remove('active-sel'));
+    document.getElementById('twopFirst'+id).classList.add('active-sel');
+    initGame();
+  });
 });
 
 // Online goes-first selector (in controls panel)
