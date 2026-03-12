@@ -689,12 +689,13 @@
 
   <div class="mega-board" id="megaBoard"></div>
 
-  <!-- ── BOARD OVERLAY (ready / pause) — sits inside board-area ── -->
+  <!-- ── BOARD OVERLAY (ready / pause / disconnect) — sits inside board-area ── -->
   <div id="boardOverlay" class="board-overlay hidden">
     <!-- Ready screen -->
     <div id="overlayReady">
       <div class="overlay-sym" id="overlayReadySym">O</div>
       <div class="overlay-heading" id="overlayReadyText">Player O — Ready?</div>
+      <p class="overlay-sub" id="overlayReadySub" style="margin-top:6px"></p>
       <button class="btn btn-new" id="btnReady" style="margin-top:16px;font-size:14px;padding:12px 36px;">Ready</button>
     </div>
     <!-- Chess online: you clicked ready, waiting for opponent -->
@@ -708,6 +709,11 @@
       <div class="overlay-heading" id="overlayPauseHeading">Game Paused</div>
       <p class="overlay-sub" id="overlayPauseSub">Clock is stopped.</p>
       <button class="btn btn-new" id="btnResume" style="margin-top:16px;font-size:14px;padding:12px 36px;">▶ Resume</button>
+    </div>
+    <!-- Disconnect screen -->
+    <div id="overlayDisconnect" class="hidden">
+      <div class="overlay-heading">Opponent Disconnected</div>
+      <p class="overlay-sub" style="margin-top:8px">Waiting for them to rejoin…</p>
     </div>
   </div>
 
@@ -728,10 +734,16 @@
     • Win the big board by claiming three squares in a row.<br>
     • The cell you play in determines which small board your opponent must play in next.<br>
     • If that board is already finished, your opponent may play in any open board.<br><br>
+
     <b>CPU Difficulty:</b><br>
     • <b>Easy</b> — mostly random moves<br>
     • <b>Medium</b> — thinks 3 moves ahead<br>
-    • <b>Hard</b> — thinks 5 moves ahead with strategic evaluation
+    • <b>Hard</b> — thinks 5 moves ahead with strategic evaluation<br><br>
+
+    <b>Clocks:</b><br>
+    • <b>Turn clock</b> — each player gets a fixed amount of time per move. The clock resets after every move. Run out and you lose.<br>
+    • <b>Chess clock</b> — each player has a shared time pool for the whole game. Your pool only counts down on your turn. Run out and you lose.<br>
+    • In online mode, if the non-active player pauses or disconnects with less than 10 seconds on the active player's clock, the active player's time is restored to 10 seconds on resume.
   </div>
 
   <div class="rules-box" id="hintsBox">
@@ -770,6 +782,11 @@
       <div class="lobby-btn-group" style="margin-top:18px">
         <button class="btn btn-new" id="btnCreate">Create Game</button>
         <button class="btn" id="btnJoinShow">Join Game</button>
+      </div>
+      <div id="rejoinGroup" class="hidden" style="margin-top:16px;border-top:1px solid var(--border-dim);padding-top:14px">
+        <p class="lobby-sub" style="margin-bottom:8px">Previous game still active:</p>
+        <button class="btn" id="btnRejoin">Rejoin — <span id="rejoinCode">----</span></button>
+        <p class="lobby-sub" id="rejoinError" style="color:#a00;margin-top:6px" class="hidden"></p>
       </div>
       <button class="rules-toggle" id="btnLobbyBack" style="margin-top:14px">← Back</button>
     </div>
@@ -818,11 +835,16 @@ let onlineGameCount = 0;
 let aiGameCount     = 0;
 let gamePaused      = false;
 let readyPending    = false;  // clock is on and waiting for ready tap
+let disconnectWaiting = false; // opponent disconnected mid-game, waiting for rejoin
+let savedRoomCode   = null;   // persists after leaving, enables rejoin
+let savedMySymbol   = null;
 
 // ════════════════════════════════════════════
 //  GAME STATE
 // ════════════════════════════════════════════
 let scores       = {X:0, O:0, D:0};
+let scores2p     = {X:0, O:0, D:0};
+let scoresAI     = {X:0, O:0, D:0};
 let currentPlayer;
 let miniStates;
 let miniWinners;
@@ -911,6 +933,7 @@ function initGame() {
   readyPending  = false;
   clockLoser    = null;
   pausedBy      = null;
+  disconnectWaiting = false;
   const btn = document.getElementById('btnPause');
   btn.textContent = '⏸ Pause';
   btn.disabled = false;
@@ -924,6 +947,7 @@ function initGame() {
   updateLabels();
   updateChessClockDisplay();
   updatePauseButtonVisibility();
+  updateClockTimeInputLock();
   if (vsAI && currentPlayer === aiSym()) triggerAI();
   if (onlineMode && mySymbol === 'O') {
     syncToFirebase('reset'); // includes pausedBy:'none', readyO/X:false
@@ -985,7 +1009,7 @@ function buildMiniBoard(bi) {
 
     // Free-pass indicator: empty cell whose index maps to a finished board
     const isPlayableBoard = !gameOver && !winner && (forcedBoard===null || forcedBoard===bi);
-    if (hintPass && isPlayableBoard && !val && miniWinners[ci] !== null) {
+    if (hintPass && isPlayableBoard && !val && miniWinners[ci] !== null && (!onlineMode || currentPlayer === mySymbol)) {
       cell.classList.add('free-pass');
     }
 
@@ -1020,7 +1044,7 @@ function buildMiniBoard(bi) {
 //  HUMAN CLICK
 // ════════════════════════════════════════════
 function handleClick(e) {
-  if (gameOver || aiThinking || gamePaused || readyPending) return;
+  if (gameOver || aiThinking || gamePaused || readyPending || disconnectWaiting) return;
   if (vsAI && currentPlayer === aiSym()) return;
   if (onlineMode && currentPlayer !== mySymbol) return;
   applyMove(+e.target.dataset.bi, +e.target.dataset.ci);
@@ -1089,6 +1113,7 @@ function applyMove(bi, ci) {
   renderAll();
   updateHUD();
   if (onlineMode) syncToFirebase();
+  updateClockTimeInputLock();
   startClock();
   if (vsAI && currentPlayer===aiSym() && !gameOver) triggerAI();
 }
@@ -1429,6 +1454,18 @@ function handleClockExpiry() {
   if (onlineMode) syncToFirebase();
 }
 
+function updateClockTimeInputLock() {
+  // Lock the time amount controls once the game is in progress; unlock on new game
+  const locked = gameHasStarted() && !gameOver;
+  const slider = document.getElementById('clockSlider');
+  const input  = document.getElementById('clockInput');
+  slider.disabled = locked;
+  slider.style.opacity = locked ? '0.4' : '';
+  input.readOnly = locked;
+  input.style.opacity = locked ? '0.4' : '';
+  // In online mode guests are always locked (handled by setOnlineControlsVisible)
+  // so only override here for non-guest contexts
+}
 function syncClockUI() {
   // Highlight the correct clock mode button
   document.querySelectorAll('#clockGroup .seg').forEach(s=>s.classList.remove('active-sel'));
@@ -1452,6 +1489,7 @@ function syncClockUI() {
     document.getElementById('clockTimeLabel').textContent = formatClockTime(clockChessSec)+' / player';
   }
   setClockDisplayVisible();
+  updateClockTimeInputLock();
 }
 
 // ════════════════════════════════════════════
@@ -1498,10 +1536,27 @@ function setOnlineControlsVisible(visible) {
     const ci = document.getElementById('clockInput');
     ci.readOnly = isGuest; ci.style.opacity = isGuest ? '0.45' : '';
   } else {
-    // Restore buttons when leaving online mode
+    // Restore buttons and re-enable any controls that were locked for guest
     document.getElementById('btnNew').classList.remove('hidden');
     document.getElementById('btnReset').classList.remove('hidden');
+    document.querySelectorAll('#clockGroup .seg, #clockSlider').forEach(s=>{
+      s.disabled = false; s.style.opacity = ''; s.style.cursor = '';
+    });
+    const ci = document.getElementById('clockInput');
+    ci.readOnly = false; ci.style.opacity = '';
   }
+}
+
+function saveCurrentScores() {
+  if (onlineMode) return; // online scores are per-lobby, not saved
+  if (vsAI) scoresAI = {X:scores.X, O:scores.O, D:scores.D};
+  else      scores2p = {X:scores.X, O:scores.O, D:scores.D};
+}
+function loadScoresForMode(newVsAI, newOnline) {
+  if (newOnline) scores = {X:0, O:0, D:0};
+  else if (newVsAI) scores = {X:scoresAI.X, O:scoresAI.O, D:scoresAI.D};
+  else scores = {X:scores2p.X, O:scores2p.O, D:scores2p.D};
+  updateScoreDisplay();
 }
 
 // ════════════════════════════════════════════
@@ -1516,6 +1571,7 @@ document.getElementById('btnNew').addEventListener('click', ()=>{
 document.getElementById('btnReset').addEventListener('click', ()=>{
   if (!confirm('Reset all scores?')) return;
   scores={X:0,O:0,D:0};
+  saveCurrentScores();
   updateScoreDisplay();
   initGame();
 });
@@ -1529,7 +1585,9 @@ document.getElementById('btnRules').addEventListener('click', ()=>{
 
 // Mode
 document.getElementById('mode2p').addEventListener('click', ()=>{
+  saveCurrentScores();
   if (onlineMode) leaveOnlineMode();
+  loadScoresForMode(false, false);
   vsAI=false;
   clockMode='off'; syncClockUI();
   document.getElementById('mode2p').classList.add('active-sel');
@@ -1539,7 +1597,9 @@ document.getElementById('mode2p').addEventListener('click', ()=>{
   initGame();
 });
 document.getElementById('modeAI').addEventListener('click', ()=>{
+  saveCurrentScores();
   if (onlineMode) leaveOnlineMode();
+  loadScoresForMode(true, false);
   vsAI=true;
   clockMode='off'; syncClockUI();
   document.getElementById('modeAI').classList.add('active-sel');
@@ -1616,6 +1676,15 @@ function showReadyScreen() {
   document.getElementById('overlayReadySym').style.color = isX ? 'var(--red-ink)' : 'var(--blue-ink)';
   const name = onlineMode ? 'You' : `Player ${sym}`;
   document.getElementById('overlayReadyText').textContent = `${name} — Ready?`;
+  // Sub-line: who goes first
+  const firstSym = currentPlayer;
+  const firstIsMe = onlineMode && firstSym === mySymbol;
+  const firstName = onlineMode
+    ? (firstIsMe ? 'You go' : 'Opponent goes')
+    : `Player ${firstSym} goes`;
+  const firstColor = firstSym === 'X' ? 'var(--red-ink)' : 'var(--blue-ink)';
+  const subEl = document.getElementById('overlayReadySub');
+  subEl.innerHTML = `<span style="color:${firstColor}">${firstName}</span> first.`;
   document.getElementById('overlayReady').classList.remove('hidden');
   document.getElementById('overlayReadyWait').classList.add('hidden');
   document.getElementById('overlayPause').classList.add('hidden');
@@ -1645,6 +1714,14 @@ function showPauseScreen(pauserSym) {
   // Snapshot current clock times before stopping
   savedTurnTime  = turnTimeLeft;
   savedChessTime = {O: chessTimeLeft.O, X: chessTimeLeft.X};
+  // 10s buffer: if the pauser is NOT the active player and active player has <10s, protect them
+  if (onlineMode && pauserSym !== currentPlayer && clockMode !== 'off') {
+    if (clockMode === 'turn' && savedTurnTime < 10) savedTurnTime = 10;
+    if (clockMode === 'chess' && savedChessTime[currentPlayer] < 10) savedChessTime[currentPlayer] = 10;
+    // Sync the corrected time back so resumeClock restores the right value
+    if (clockMode === 'turn') turnTimeLeft = savedTurnTime;
+    if (clockMode === 'chess') chessTimeLeft[currentPlayer] = savedChessTime[currentPlayer];
+  }
   stopClock();
 
   // Online: only the pauser can resume. Local 2P: shared screen, anyone can resume.
@@ -1652,8 +1729,20 @@ function showPauseScreen(pauserSym) {
   const pauserName = onlineMode ? 'Opponent' : `Player ${pauserSym}`;
 
   document.getElementById('overlayPauseHeading').textContent = 'Game Paused';
-  document.getElementById('overlayPauseSub').textContent =
-    iAmPauser ? '' : `Paused by ${pauserName}. Waiting…`;
+
+  // Show time to the active player (whoever's turn it is right now)
+  let pauseSub = iAmPauser ? '' : `Paused by ${pauserName}. Waiting…`;
+  if (clockMode !== 'off' && !gameOver) {
+    const isMyTurn = onlineMode ? (currentPlayer === mySymbol) : true;
+    if (isMyTurn) {
+      const timeLeft = clockMode === 'turn'
+        ? savedTurnTime
+        : savedChessTime[currentPlayer];
+      const timeTxt = `${formatClockTime(timeLeft)} remaining on ${onlineMode ? 'your' : `Player ${currentPlayer}'s`} clock.`;
+      pauseSub = iAmPauser ? timeTxt : `Paused by ${pauserName}. Waiting…\n${timeTxt}`;
+    }
+  }
+  document.getElementById('overlayPauseSub').textContent = pauseSub;
   document.getElementById('btnResume').classList.toggle('hidden', !iAmPauser);
   document.getElementById('overlayPause').classList.remove('hidden');
   document.getElementById('overlayReady').classList.add('hidden');
@@ -1767,6 +1856,17 @@ function showLobbyView(id) {
 function showLobby() {
   document.getElementById('lobbyOverlay').classList.remove('hidden');
   showLobbyView('lobbyChoice');
+  // Verify the saved room still exists before showing the rejoin button
+  if (savedRoomCode && db) {
+    db.ref('rooms/'+savedRoomCode).once('value').then(snap => {
+      if (!snap.exists()) {
+        savedRoomCode = null; savedMySymbol = null;
+      }
+      updateRejoinButton();
+    });
+  } else {
+    updateRejoinButton();
+  }
 }
 function hideLobby() {
   document.getElementById('lobbyOverlay').classList.add('hidden');
@@ -1783,6 +1883,8 @@ async function createRoom() {
   roomCode = code; mySymbol = 'O';
   roomRef  = db.ref('rooms/' + code);
   onlineGameCount = 0;
+  savedRoomCode = null; savedMySymbol = null; // clear any old rejoin state
+  scores = {X:0, O:0, D:0}; // fresh score for new lobby
 
   // Initialise board
   miniStates = Array.from({length:9},()=>Array(9).fill(null));
@@ -1791,19 +1893,25 @@ async function createRoom() {
   forcedBoard = null; gameOver = false; lastMove = null;
 
   await roomRef.set({
-    hostPresent: true, guestPresent: false,
-    lastMoveBy: null, onlineFirst,
+    hostPresent: true, guestPresent: false, guestLocked: false,
+    lastMoveBy: null, onlineFirst, disconnectedBy: 'none',
     state: serializeState()
   });
-  roomRef.child('hostPresent').onDisconnect().set(false);
+  roomRef.onDisconnect().update({ hostPresent: false, disconnectedBy: 'O' });
+
+  savedRoomCode = code; savedMySymbol = 'O';
 
   document.getElementById('lobbyCode').textContent = code;
   showLobbyView('lobbyWaiting');
 
-  // Wait for guest to join
-  roomRef.child('guestPresent').on('value', snap => {
-    if (snap.val() === true) startOnlineGame();
-  });
+  // Wait for guest to join — use a named callback so it can be removed after firing
+  const onGuestJoin = snap => {
+    if (snap.val() === true) {
+      roomRef.child('guestPresent').off('value', onGuestJoin);
+      startOnlineGame();
+    }
+  };
+  roomRef.child('guestPresent').on('value', onGuestJoin);
 }
 
 function updateWaitingText() {
@@ -1823,27 +1931,42 @@ async function joinRoom() {
   const snap = await db.ref('rooms/'+code).once('value');
   const data  = snap.val();
 
-  if (!data)             { showJoinError('Room not found.'); return; }
-  if (!data.hostPresent) { showJoinError('Host has disconnected.'); return; }
-  if (data.guestPresent) { showJoinError('Room is already full.'); return; }
+  if (!data)              { showJoinError('Room not found.'); return; }
+  if (!data.hostPresent)  { showJoinError('Host has disconnected.'); return; }
+  // Block strangers from taking a locked guest slot, but allow the original guest to rejoin
+  const isOriginalGuest = savedRoomCode === code && savedMySymbol === 'X';
+  const isOriginalHost  = savedRoomCode === code && savedMySymbol === 'O';
+  if (isOriginalHost) {
+    // Route host back through rejoinRoom logic
+    await rejoinRoom(); return;
+  }
+  if (data.guestLocked && !isOriginalGuest && data.disconnectedBy !== 'X') {
+    showJoinError('This game is already in progress.'); return;
+  }
+  if (data.guestPresent && !isOriginalGuest && data.disconnectedBy !== 'X') {
+    showJoinError('Room is already full.'); return;
+  }
 
   roomCode = code; mySymbol = 'X';
   roomRef  = db.ref('rooms/'+code);
   onlineFirst     = data.onlineFirst || 'random';
   onlineGameCount = data.gameCount   || 0;
+  scores = {X:0, O:0, D:0}; // fresh score for new lobby
 
-  await roomRef.child('guestPresent').set(true);
-  roomRef.child('guestPresent').onDisconnect().set(false);
+  await roomRef.update({ guestPresent: true, guestLocked: true, disconnectedBy: 'none' });
+  roomRef.onDisconnect().update({ guestPresent: false, disconnectedBy: 'X' });
+
+  savedRoomCode = code; savedMySymbol = 'X';
 
   deserializeState(data.state);
   startOnlineGame();
 }
 
 // ── Start online game ─────────────────────────
-function startOnlineGame() {
+function startOnlineGame(isRejoin = false) {
   onlineMode = true;
   vsAI = false;
-  clockMode = 'off'; syncClockUI();
+  if (!isRejoin) { clockMode = 'off'; syncClockUI(); }
   hideLobby();
 
   ['mode2p','modeAI'].forEach(id => document.getElementById(id).classList.remove('active-sel'));
@@ -1855,15 +1978,32 @@ function startOnlineGame() {
 
   // Listen for all room changes
   roomRef.on('value', snap => {
-    if (!snap.exists()) return;
+    if (!snap.exists()) {
+      // Room was deleted — both players have left, no rejoin possible
+      savedRoomCode = null; savedMySymbol = null;
+      updateRejoinButton();
+      return;
+    }
     const data = snap.val();
     if (!data) return;
 
     // Opponent disconnected
-    const opKey = mySymbol === 'O' ? 'guestPresent' : 'hostPresent';
-    if (data[opKey] === false) {
-      setStatus('Opponent disconnected.', 'win');
-      gameOver = true; renderAll(); updateCards(null); return;
+    const opSym = mySymbol === 'O' ? 'X' : 'O';
+    const fbDisconnected = data.disconnectedBy && data.disconnectedBy !== 'none' && data.disconnectedBy === opSym;
+    if (fbDisconnected && !disconnectWaiting && !gameOver) {
+      showDisconnectWait();
+      // If the host (O) disconnected, guest (X) takes over as room keeper
+      // so the room stays alive and the host can rejoin
+      if (opSym === 'O' && mySymbol === 'X') {
+        roomRef.update({ hostPresent: true });
+        // If guest also leaves, mark both gone
+        roomRef.onDisconnect().update({ guestPresent: false, hostPresent: false, disconnectedBy: 'X' });
+      }
+      return;
+    }
+    if (!fbDisconnected && disconnectWaiting) {
+      hideDisconnectWait();
+      return;
     }
 
     // Pick up pause state
@@ -1976,20 +2116,156 @@ function startOnlineGame() {
   });
 }
 
+// ── Disconnect overlay ────────────────────────
+function showDisconnectWait() {
+  disconnectWaiting = true;
+  savedTurnTime  = turnTimeLeft;
+  savedChessTime = {O: chessTimeLeft.O, X: chessTimeLeft.X};
+  stopClock();
+  // 10s buffer: if it was the OPPONENT's turn (disconnecting player) and they had <10s,
+  // protect their time. The leaving player may have written accurate savedTimes — don't overwrite.
+  // Only write our own snapshot for the case where the leaving player didn't (involuntary drop).
+  if (roomRef) {
+    const snap = { turn: savedTurnTime, chess: savedChessTime };
+    // Only overwrite if it's OUR turn (we have the accurate time)
+    if (currentPlayer === mySymbol) {
+      roomRef.update({ savedTimes: snap });
+    }
+    // If it's the opponent's turn, their leaveOnlineMode already wrote accurate times.
+    // We do nothing here and trust their value.
+  }
+  document.getElementById('overlayDisconnect').classList.remove('hidden');
+  document.getElementById('overlayReady').classList.add('hidden');
+  document.getElementById('overlayReadyWait').classList.add('hidden');
+  document.getElementById('overlayPause').classList.add('hidden');
+  document.getElementById('boardOverlay').classList.remove('hidden');
+  document.getElementById('btnPause').disabled = true;
+  document.getElementById('btnPause').style.opacity = '0.4';
+}
+
+function hideDisconnectWait() {
+  disconnectWaiting = false;
+  document.getElementById('overlayDisconnect').classList.add('hidden');
+  document.getElementById('boardOverlay').classList.add('hidden');
+  document.getElementById('btnPause').disabled = false;
+  document.getElementById('btnPause').style.opacity = '';
+  resumeClock();
+}
+
+// ── Rejoin room ───────────────────────────────
+async function rejoinRoom() {
+  if (!db || !savedRoomCode) return;
+  const errEl = document.getElementById('rejoinError');
+  errEl.textContent = ''; errEl.classList.add('hidden');
+
+  // Clean up any stale online state (e.g. network drop without a clean leave)
+  if (roomRef) { roomRef.onDisconnect().cancel(); roomRef.off(); roomRef = null; }
+  onlineMode = false;
+
+  const snap = await db.ref('rooms/'+savedRoomCode).once('value');
+  const data  = snap.val();
+
+  if (!data) {
+    errEl.textContent = 'Room no longer exists.';
+    errEl.classList.remove('hidden');
+    savedRoomCode = null; savedMySymbol = null;
+    updateRejoinButton(); return;
+  }
+  // Room is alive if at least one presence flag is true
+  const someonePresent = data.hostPresent || data.guestPresent;
+  // The opponent is the one who is NOT savedMySymbol
+  const opPresKey = savedMySymbol === 'O' ? 'guestPresent' : 'hostPresent';
+  if (!someonePresent || !data[opPresKey]) {
+    errEl.textContent = 'Opponent has left the game.';
+    errEl.classList.remove('hidden');
+    savedRoomCode = null; savedMySymbol = null;
+    updateRejoinButton(); return;
+  }
+
+  // Restore session vars
+  roomCode   = savedRoomCode;
+  mySymbol   = savedMySymbol;
+  roomRef    = db.ref('rooms/'+roomCode);
+  onlineFirst     = data.onlineFirst || 'random';
+  onlineGameCount = data.gameCount   || 0;
+  clockMode       = data.clockMode   || 'off';
+  clockTurnSec    = data.clockTurnSec   || 30;
+  clockChessSec   = data.clockChessSec  || 300;
+  if (data.state) deserializeState(data.state);
+  // Restore the exact clock times from when the disconnect was detected
+  if (data.savedTimes) {
+    if (data.savedTimes.turn)  turnTimeLeft  = data.savedTimes.turn;
+    if (data.savedTimes.chess) chessTimeLeft = data.savedTimes.chess;
+  }
+
+  const presKey = mySymbol === 'O' ? 'hostPresent' : 'guestPresent';
+  await roomRef.update({ [presKey]: true, disconnectedBy: 'none' });
+  roomRef.onDisconnect().update({ [presKey]: false, disconnectedBy: mySymbol });
+
+  syncClockUI();
+  startOnlineGame(true);
+  // Pause button: make sure it's shown now that we have a clock
+  updatePauseButtonVisibility();
+  // Require rejoining player to manually unpause — this also pauses the remaining player's clock
+  if (clockMode !== 'off' && !gameOver) {
+    showPauseScreen(mySymbol);
+  }
+  // Turn clock: hide if it's not our turn (resumeClock handles this normally, but game is paused)
+  if (clockMode === 'turn' && currentPlayer !== mySymbol) {
+    document.getElementById('turnClock').classList.add('hidden');
+  }
+}
+
+function updateRejoinButton() {
+  const group = document.getElementById('rejoinGroup');
+  // Only show if there's a saved code AND we're not currently in an active session
+  if (savedRoomCode && !onlineMode) {
+    document.getElementById('rejoinCode').textContent = savedRoomCode;
+    group.classList.remove('hidden');
+  } else {
+    group.classList.add('hidden');
+  }
+}
+
 // ── Leave online mode ─────────────────────────
 function leaveOnlineMode() {
-  if (roomRef) {
+  if (roomRef && onlineMode && !disconnectWaiting) {
     const presKey = mySymbol === 'O' ? 'hostPresent' : 'guestPresent';
-    roomRef.child(presKey).set(false);
-    roomRef.child(presKey).onDisconnect().cancel();
+    // The leaving player has the accurate clock if it's their turn
+    let saveTurn  = turnTimeLeft;
+    let saveChess = { O: chessTimeLeft.O, X: chessTimeLeft.X };
+    // 10s buffer: if it's the OPPONENT's turn and they have <10s, protect them
+    if (clockMode !== 'off' && currentPlayer !== mySymbol) {
+      if (clockMode === 'turn' && saveTurn < 10) saveTurn = 10;
+      if (clockMode === 'chess' && saveChess[currentPlayer] < 10) saveChess[currentPlayer] = 10;
+    }
+    roomRef.update({
+      [presKey]: false,
+      disconnectedBy: mySymbol,
+      savedTimes: { turn: saveTurn, chess: saveChess }
+    });
+    roomRef.onDisconnect().cancel();
+    roomRef.off();
+  } else if (roomRef) {
+    // Opponent already gone — we're the last one, delete the room entirely
+    roomRef.remove();
+    roomRef.onDisconnect().cancel();
     roomRef.off();
   }
+  if (disconnectWaiting) {
+    savedRoomCode = null; savedMySymbol = null;
+  } else {
+    savedRoomCode = roomCode || savedRoomCode;
+    savedMySymbol = mySymbol || savedMySymbol;
+  }
   onlineMode = false; mySymbol = null; roomCode = null; roomRef = null;
+  disconnectWaiting = false;
+  updateRejoinButton();
   setOnlineControlsVisible(false);
 }
 
 // ── Lobby button wiring ───────────────────────
-document.getElementById('modeOnline').addEventListener('click', showLobby);
+document.getElementById('modeOnline').addEventListener('click', ()=>{ saveCurrentScores(); scores={X:0,O:0,D:0}; updateScoreDisplay(); showLobby(); });
 
 document.getElementById('btnCreate').addEventListener('click', createRoom);
 
@@ -2008,9 +2284,13 @@ document.getElementById('joinCodeInput').addEventListener('keydown', e=>{
   if (e.key==='Enter') joinRoom();
 });
 
+document.getElementById('btnRejoin').addEventListener('click', rejoinRoom);
+
 document.getElementById('btnCancelWait').addEventListener('click', ()=>{
   if (roomRef) { roomRef.remove(); roomRef.off(); }
   roomRef = null; roomCode = null; mySymbol = null;
+  savedRoomCode = null; savedMySymbol = null;
+  updateRejoinButton();
   showLobbyView('lobbyChoice');
 });
 
@@ -2132,6 +2412,11 @@ document.getElementById('btnPause').addEventListener('click', ()=>{
   if (gamePaused) {
     if (!onlineMode || pausedBy === mySymbol) resumeGame();
   } else if (!readyPending && !gameOver) {
+    // In online mode, don't allow pausing when it's the opponent's turn and they have ≤5s left
+    if (onlineMode && currentPlayer !== mySymbol) {
+      const opTime = clockMode === 'turn' ? turnTimeLeft : chessTimeLeft[currentPlayer];
+      if (clockMode !== 'off' && opTime <= 5) return;
+    }
     showPauseScreen(onlineMode ? mySymbol : currentPlayer);
   }
 });
@@ -2189,6 +2474,7 @@ document.getElementById('btnLobbyBack').addEventListener('click', ()=>{
   if (roomRef) { roomRef.off(); roomRef = null; }
   roomCode = null; mySymbol = null;
   document.getElementById('modeOnline').classList.remove('active-sel');
+  updateRejoinButton();
   hideLobby();
 });
 
